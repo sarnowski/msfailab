@@ -74,12 +74,9 @@ config :msfailab, dev_routes: true
 # Console output uses simple format, file gets same format
 config :logger, :default_formatter, format: "$time [$level] $message [$metadata]\n"
 
-# Enable SASL reports (supervisor crash reports, progress reports)
-# This is critical for seeing WHY processes crash
-config :logger,
-  handle_sasl_reports: true,
-  # Also translate OTP reports to Logger format
-  handle_otp_reports: true
+# SASL reports (supervisor crash reports, progress reports) are disabled
+# to reduce noise. Enable temporarily when debugging process crashes:
+#   config :logger, handle_sasl_reports: true, handle_otp_reports: true
 
 # File handler for dev - logs to log/app.log alongside console output
 # Uses :all metadata to capture everything for debugging
