@@ -33,9 +33,10 @@ defmodule Msfailab.Containers.Msgrpc.ConsoleTest do
 
   setup do
     # Configure fast timing for tests to minimize Process.sleep waits
+    # keepalive_interval_ms: 100 provides buffer over typical test duration (~50ms)
     Application.put_env(:msfailab, :console_timing,
       poll_interval_ms: 5,
-      keepalive_interval_ms: 50,
+      keepalive_interval_ms: 100,
       max_retries: 3,
       retry_delays_ms: [5, 10, 20]
     )
@@ -392,7 +393,17 @@ defmodule Msfailab.Containers.Msgrpc.ConsoleTest do
   end
 
   describe "keepalive" do
-    # Uses fast timing from main setup: keepalive_interval_ms: 50
+    setup do
+      # Override with shorter keepalive interval for these tests
+      Application.put_env(:msfailab, :console_timing,
+        poll_interval_ms: 5,
+        keepalive_interval_ms: 50,
+        max_retries: 3,
+        retry_delays_ms: [5, 10, 20]
+      )
+
+      :ok
+    end
 
     test "performs keepalive read when idle in :ready state" do
       expect(MsgrpcClientMock, :console_create, fn _, _ ->

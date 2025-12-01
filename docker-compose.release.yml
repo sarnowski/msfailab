@@ -1,0 +1,90 @@
+# Production release: uses pre-built images from GitHub Container Registry
+# Usage: docker compose -f oci://ghcr.io/sarnowski/msfailab:latest up
+#
+# Configuration: Copy .env.example to .env and edit as needed.
+# At minimum, configure one AI backend (MSFAILAB_OLLAMA_HOST, MSFAILAB_OPENAI_API_KEY,
+# or MSFAILAB_ANTHROPIC_API_KEY).
+#
+# SECURITY: For non-demo deployments, generate a secret key:
+#   openssl rand -base64 48
+# Then set MSFAILAB_SECRET_KEY_BASE in your .env file.
+
+services:
+  postgres:
+    image: postgres:17
+    container_name: msfailab-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: msfailab
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - msfailab
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  msfconsole-image:
+    image: ghcr.io/sarnowski/msfailab-msfconsole:latest
+    command: ["true"]
+    networks:
+      - msfailab
+
+  migrate:
+    image: ghcr.io/sarnowski/msfailab-server:latest
+    command: /app/bin/migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ecto://postgres:postgres@msfailab-postgres/msfailab
+      # SECURITY: Change for non-demo deployments! Generate with: openssl rand -base64 48
+      MSFAILAB_SECRET_KEY_BASE: ${MSFAILAB_SECRET_KEY_BASE:-insecure-demo-secret-change-me-in-production-generate-with-openssl}
+    networks:
+      - msfailab
+
+  server:
+    image: ghcr.io/sarnowski/msfailab-server:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      msfconsole-image:
+        condition: service_completed_successfully
+    ports:
+      - "${MSFAILAB_PORT:-127.0.0.1:4000}:4000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      DATABASE_URL: ecto://postgres:postgres@msfailab-postgres/msfailab
+      # SECURITY: Change for non-demo deployments! Generate with: openssl rand -base64 48
+      MSFAILAB_SECRET_KEY_BASE: ${MSFAILAB_SECRET_KEY_BASE:-insecure-demo-secret-change-me-in-production-generate-with-openssl}
+      # Public hostname for URL generation
+      MSFAILAB_HOST: ${MSFAILAB_HOST:-localhost}
+      # Docker configuration
+      MSFAILAB_DOCKER_ENDPOINT: /var/run/docker.sock
+      MSFAILAB_DEFAULT_CONSOLE_IMAGE: ${MSFAILAB_DEFAULT_CONSOLE_IMAGE:-ghcr.io/sarnowski/msfailab-msfconsole:latest}
+      # Database URL for MSF containers (from container network perspective)
+      MSF_DB_URL: postgres://postgres:postgres@msfailab-postgres:5432/msfailab
+      # AI backend configuration (at least one required)
+      MSFAILAB_OLLAMA_HOST: ${MSFAILAB_OLLAMA_HOST:-}
+      MSFAILAB_OLLAMA_MODEL_FILTER: ${MSFAILAB_OLLAMA_MODEL_FILTER:-}
+      MSFAILAB_OLLAMA_THINKING: ${MSFAILAB_OLLAMA_THINKING:-}
+      MSFAILAB_OPENAI_API_KEY: ${MSFAILAB_OPENAI_API_KEY:-}
+      MSFAILAB_OPENAI_MODEL_FILTER: ${MSFAILAB_OPENAI_MODEL_FILTER:-}
+      MSFAILAB_ANTHROPIC_API_KEY: ${MSFAILAB_ANTHROPIC_API_KEY:-}
+      MSFAILAB_ANTHROPIC_MODEL_FILTER: ${MSFAILAB_ANTHROPIC_MODEL_FILTER:-}
+      MSFAILAB_DEFAULT_MODEL: ${MSFAILAB_DEFAULT_MODEL:-}
+    networks:
+      - msfailab
+
+volumes:
+  postgres_data:
+
+networks:
+  msfailab:
+    name: msfailab
