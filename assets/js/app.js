@@ -134,17 +134,28 @@ const Hooks = {
   },
 
   ResizablePanes: {
-    mounted() {
-      const STORAGE_KEY = "msfailab:pane-width"
-      const MIN_PERCENT = 20
-      const MAX_PERCENT = 80
-      const DEFAULT_PERCENT = 50
+    STORAGE_KEY: "msfailab:pane-width",
+    MIN_PERCENT: 20,
+    MAX_PERCENT: 80,
+    DEFAULT_PERCENT: 50,
 
-      // Helper functions (defined first so they can be used below)
-      const clamp = (percent) => Math.min(MAX_PERCENT, Math.max(MIN_PERCENT, percent))
-      const applyWidth = (percent) => {
-        this.el.style.setProperty("--left-pane-width", `${percent}%`)
-      }
+    clamp(percent) {
+      return Math.min(this.MAX_PERCENT, Math.max(this.MIN_PERCENT, percent))
+    },
+
+    applyWidth(percent) {
+      this.el.style.setProperty("--left-pane-width", `${percent}%`)
+    },
+
+    restoreWidth() {
+      const saved = localStorage.getItem(this.STORAGE_KEY)
+      const percent = saved ? parseFloat(saved) : this.DEFAULT_PERCENT
+      this.applyWidth(this.clamp(percent))
+    },
+
+    mounted() {
+      // Restore saved width on mount
+      this.restoreWidth()
 
       // Find the divider element
       this.divider = this.el.querySelector("[data-pane-divider]")
@@ -153,72 +164,67 @@ const Hooks = {
 
       if (!this.divider || !this.leftPane || !this.rightPane) return
 
-      // Restore saved width or use default
-      const saved = localStorage.getItem(STORAGE_KEY)
-      const initialPercent = saved ? parseFloat(saved) : DEFAULT_PERCENT
-      applyWidth(clamp(initialPercent))
-
       // Drag state
-      let isDragging = false
+      this.isDragging = false
 
       const onMouseDown = (e) => {
-        isDragging = true
+        this.isDragging = true
         e.preventDefault()
         document.body.style.cursor = "col-resize"
         document.body.style.userSelect = "none"
       }
 
       const onMouseMove = (e) => {
-        if (!isDragging) return
+        if (!this.isDragging) return
 
         const rect = this.el.getBoundingClientRect()
         const x = e.clientX - rect.left
         const percent = (x / rect.width) * 100
-        applyWidth(clamp(percent))
+        this.applyWidth(this.clamp(percent))
       }
 
       const onMouseUp = () => {
-        if (!isDragging) return
-        isDragging = false
+        if (!this.isDragging) return
+        this.isDragging = false
         document.body.style.cursor = ""
         document.body.style.userSelect = ""
 
         // Persist to localStorage
         const currentWidth = this.el.style.getPropertyValue("--left-pane-width")
         if (currentWidth) {
-          localStorage.setItem(STORAGE_KEY, parseFloat(currentWidth))
+          localStorage.setItem(this.STORAGE_KEY, parseFloat(currentWidth))
         }
       }
 
       // Touch support
       const onTouchStart = (e) => {
-        isDragging = true
+        this.isDragging = true
         e.preventDefault()
       }
 
       const onTouchMove = (e) => {
-        if (!isDragging || !e.touches[0]) return
+        if (!this.isDragging || !e.touches[0]) return
 
         const rect = this.el.getBoundingClientRect()
         const x = e.touches[0].clientX - rect.left
         const percent = (x / rect.width) * 100
-        applyWidth(clamp(percent))
+        this.applyWidth(this.clamp(percent))
       }
 
       const onTouchEnd = () => {
-        if (!isDragging) return
-        isDragging = false
+        if (!this.isDragging) return
+        this.isDragging = false
 
         const currentWidth = this.el.style.getPropertyValue("--left-pane-width")
         if (currentWidth) {
-          localStorage.setItem(STORAGE_KEY, parseFloat(currentWidth))
+          localStorage.setItem(this.STORAGE_KEY, parseFloat(currentWidth))
         }
       }
 
       // Double-click to reset to 50/50
       const onDoubleClick = () => {
-        applyWidth(DEFAULT_PERCENT)
-        localStorage.setItem(STORAGE_KEY, DEFAULT_PERCENT)
+        this.applyWidth(this.DEFAULT_PERCENT)
+        localStorage.setItem(this.STORAGE_KEY, this.DEFAULT_PERCENT)
       }
 
       // Attach event listeners
@@ -241,6 +247,12 @@ const Hooks = {
         document.removeEventListener("touchmove", onTouchMove)
         document.removeEventListener("touchend", onTouchEnd)
       }
+    },
+
+    updated() {
+      // Restore saved width after LiveView DOM updates
+      // This prevents the pane from resetting to 50% when content changes
+      this.restoreWidth()
     },
 
     destroyed() {

@@ -27,12 +27,9 @@ defmodule MsfailabWeb.WorkspaceLive do
   alias Msfailab.Containers
   alias Msfailab.Containers.ContainerRecord
   alias Msfailab.Events
-  alias Msfailab.Events.ChatStateUpdated
-  alias Msfailab.Events.ContainerCreated
-  alias Msfailab.Events.ContainerUpdated
-  alias Msfailab.Events.TrackCreated
-  alias Msfailab.Events.TrackStateUpdated
-  alias Msfailab.Events.TrackUpdated
+  alias Msfailab.Events.ChatChanged
+  alias Msfailab.Events.ConsoleChanged
+  alias Msfailab.Events.WorkspaceChanged
   alias Msfailab.LLM
   alias Msfailab.Slug
   alias Msfailab.Tracks
@@ -583,84 +580,22 @@ defmodule MsfailabWeb.WorkspaceLive do
   # ===========================================================================
 
   # ---------------------------------------------------------------------------
-  # Entity Events (for header menu updates)
+  # WorkspaceChanged Event (for header menu updates)
   # ---------------------------------------------------------------------------
 
   @impl true
-  def handle_info(%ContainerCreated{} = event, socket) do
-    # Add new container to the list with empty tracks
-    new_container = %ContainerRecord{
-      id: event.container_id,
-      workspace_id: event.workspace_id,
-      slug: event.slug,
-      name: event.name,
-      docker_image: event.docker_image,
-      tracks: []
-    }
-
-    containers = socket.assigns.containers ++ [new_container]
-    {:noreply, assign(socket, :containers, containers)}
-  end
-
-  @impl true
-  def handle_info(%ContainerUpdated{} = event, socket) do
-    # Update container in the list (name changes, etc.)
-    containers =
-      Enum.map(socket.assigns.containers, fn container ->
-        if container.id == event.container_id do
-          %{container | name: event.name, slug: event.slug}
-        else
-          container
-        end
-      end)
-
-    {:noreply, assign(socket, :containers, containers)}
-  end
-
-  @impl true
-  def handle_info(%TrackCreated{} = event, socket) do
-    # Add new track to the appropriate container
-    new_track = %Track{
-      id: event.track_id,
-      container_id: event.container_id,
-      slug: event.slug,
-      name: event.name,
-      archived_at: nil
-    }
-
-    containers =
-      Enum.map(socket.assigns.containers, fn container ->
-        if container.id == event.container_id do
-          %{container | tracks: container.tracks ++ [new_track]}
-        else
-          container
-        end
-      end)
-
-    {:noreply, assign(socket, :containers, containers)}
-  end
-
-  @impl true
-  def handle_info(%TrackUpdated{} = event, socket) do
-    # Update track in the appropriate container (or remove if archived)
-    containers =
-      Enum.map(socket.assigns.containers, fn container ->
-        if container.id == event.container_id do
-          %{container | tracks: Helpers.update_tracks_list(container.tracks, event)}
-        else
-          container
-        end
-      end)
-
+  def handle_info(%WorkspaceChanged{}, socket) do
+    # Re-fetch containers with tracks from database
+    containers = Containers.list_containers_with_tracks(socket.assigns.workspace)
     {:noreply, assign(socket, :containers, containers)}
   end
 
   # ---------------------------------------------------------------------------
-  # State Events (for terminal pane updates)
+  # Console/Chat Changed Events (for pane updates)
   # ---------------------------------------------------------------------------
 
   @impl true
-  def handle_info(%TrackStateUpdated{track_id: track_id}, socket) do
+  def handle_info(%ConsoleChanged{track_id: track_id}, socket) do
     current_track = socket.assigns.current_track
 
     socket =
@@ -681,7 +616,7 @@ defmodule MsfailabWeb.WorkspaceLive do
   end
 
   @impl true
-  def handle_info(%ChatStateUpdated{track_id: track_id}, socket) do
+  def handle_info(%ChatChanged{track_id: track_id}, socket) do
     current_track = socket.assigns.current_track
 
     socket =

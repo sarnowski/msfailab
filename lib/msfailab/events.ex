@@ -23,140 +23,189 @@ defmodule Msfailab.Events do
   - Topics are derived from events, not scattered as string literals
   - Subscription helpers make it easy to listen to relevant events
 
-  ## Event Categories
+  ## Event Philosophy: Lightweight Notifications
 
-  Events are divided into two distinct categories based on what they represent:
+  All events in this system are **lightweight notifications**. They signal that
+  something changed, but do NOT carry the full state payload. The UI should
+  always fetch fresh state from the appropriate context after receiving an event.
 
-  ### Entity Events
+  This "notification + fetch" pattern:
 
-  Represent changes to domain model entities (CRUD operations, metadata changes).
-  These events are broadcast by **context modules** (Containers, Tracks) and
-  represent "what exists" and its properties.
+  - **Eliminates accumulation bugs** - No race conditions from appending/updating
+    local state while the database also changes (e.g., via `push_patch` reload)
+  - **Ensures consistency** - UI always gets complete, coherent state from the
+    single source of truth (database or GenServer)
+  - **Handles missed events** - If a subscriber misses an event, the next one
+    still triggers a full refresh
+  - **Keeps events minimal** - Only identifiers needed to know what to refresh
+  - **Simplifies LiveView handlers** - No transformation logic, just fetch and assign
 
-  - **Source of truth**: Database
-  - **Broadcast by**: Context modules
-  - **Used for**: Header menus, navigation, entity listings
-  - **Events**: ContainerCreated, ContainerUpdated, TrackCreated, TrackUpdated
+  ## Event-to-UI Region Mapping
 
-  ### State Events
+  Each UI notification event corresponds to a specific region that should re-render:
 
-  Represent changes to runtime session state within entities. These events are
-  broadcast by **GenServers** (Container, TrackServer) and represent "what's
-  happening" within those entities.
+  | Event | Topic | UI Region | Data Source |
+  |-------|-------|-----------|-------------|
+  | `WorkspacesChanged` | `application` | Workspace list (home, selector) | `Workspaces.list_workspaces/0` |
+  | `WorkspaceChanged` | `workspace:<id>` | Header menu (containers, tracks) | `Containers.list_containers_with_tracks/1` |
+  | `ConsoleChanged` | `workspace:<id>` | Terminal pane | `Tracks.get_console_state/1` |
+  | `ChatChanged` | `workspace:<id>` | AI chat pane | `Tracks.get_chat_state/1` |
 
-  - **Source of truth**: GenServer (cached in memory, persisted to DB)
-  - **Broadcast by**: GenServers
-  - **Used for**: Terminal pane, chat pane, activity indicators
-  - **Events**: TrackStateUpdated, CommandIssued, CommandResult
+  ## When to Broadcast Each Event
 
-  The key distinction:
-  - **Entity events**: "A track was created/renamed/archived"
-  - **State events**: "Something happened in this track's session"
+  ### WorkspacesChanged
 
-  ## Self-Healing Event Pattern
+  Broadcast when the **list** of workspaces changes:
+  - Workspace created
+  - Workspace renamed (slug/name change)
+  - Workspace deleted
 
-  All events in this system follow a **self-healing pattern**: subsequent events
-  in an event chain carry all information from previous events plus additional
-  fields. This enables state reconstruction if earlier events are missed.
+  ### WorkspaceChanged
 
-  ### Event Chains
+  Broadcast when **entities within** a workspace change:
+  - Container created or updated (name, status)
+  - Track created, renamed, or archived
+  - Any change affecting the header menu structure
 
-  **Container Events (Entity):**
-  - `ContainerCreated` (base): id, slug, name, docker_image
-  - `ContainerUpdated` (extends): + status, reason
+  ### ConsoleChanged
 
-  **Track Events (Entity):**
-  - `TrackCreated` (base): id, slug, name, container_id
-  - `TrackUpdated` (extends): + archived_at
+  Broadcast when the **terminal pane** needs to update:
+  - Console status changed (offline → starting → ready)
+  - Command output received
+  - History block completed
 
-  **Command Events (State):**
-  - `CommandIssued` (base): id, type, command
-  - `CommandResult` (extends): + output, status, exit_code, error
+  ### ChatChanged
 
-  **Track State Events (State):**
-  - `TrackStateUpdated` - Notification only, query TrackServer for full state
+  Broadcast when the **AI chat pane** needs to update:
+  - New chat entry added
+  - Streaming content updated
+  - Tool invocation status changed
 
-  ### Example: Self-Healing in Action
+  ## Command Events (Activity Indicators)
 
-  If a subscriber joins mid-session and misses `ContainerCreated`, the next
-  `ContainerUpdated` event contains all entity fields (slug, name, docker_image),
-  allowing the subscriber to reconstruct the container's existence and current state.
+  These events are for real-time activity feedback, not UI region refreshes:
 
-  Similarly, if `CommandIssued` is missed, `CommandResult` includes the command
-  type and text, so the subscriber can still display meaningful output.
-
-  ### Design Principle
-
-  When adding new events, ensure:
-  1. Subsequent events include ALL fields from previous events in the chain
-  2. Each event can independently describe the entity's current state
-  3. Field names remain consistent across the event chain
+  - `CommandIssued` - Command submitted (show "executing" indicator)
+  - `CommandResult` - Command completed (show result, clear indicator)
+  - `ConsoleUpdated` - Raw console output (internal, triggers ConsoleChanged)
 
   ## Topics
 
-  - `workspace:<workspace_id>` - All events for a workspace (containers, tracks, commands)
+  - `application` - Application-wide events (WorkspacesChanged only)
+  - `workspace:<workspace_id>` - All events scoped to a specific workspace
 
-  ## Event Types
+  ## Complete LiveView Integration Example
 
-  ### Entity Events (from context modules)
-  - `Msfailab.Events.ContainerCreated` - New container created
-  - `Msfailab.Events.ContainerUpdated` - Container updated or status changed
-  - `Msfailab.Events.TrackCreated` - New track created
-  - `Msfailab.Events.TrackUpdated` - Track updated or archived
+      defmodule MyAppWeb.WorkspaceLive do
+        use Phoenix.LiveView
 
-  ### State Events (from GenServers)
-  - `Msfailab.Events.TrackStateUpdated` - Track session state changed (query for full state)
-  - `Msfailab.Events.CommandIssued` - Command submitted for execution
-  - `Msfailab.Events.CommandResult` - Command execution result (running/finished/error)
+        alias MyApp.Containers
+        alias MyApp.Events
+        alias MyApp.Events.{WorkspaceChanged, ConsoleChanged, ChatChanged}
+        alias MyApp.Tracks
 
-  ## Event Context
+        def mount(_params, _session, socket) do
+          if connected?(socket) do
+            Events.subscribe_to_workspace(socket.assigns.workspace.id)
+          end
+          {:ok, socket}
+        end
 
-  All events include full context for routing and filtering:
-  - `workspace_id` - Used for PubSub topic routing
-  - `container_id` - Identifies the container
-  - `track_id` - Identifies the track (for track and command events)
+        # WorkspaceChanged: refresh header menu (containers + tracks)
+        def handle_info(%WorkspaceChanged{}, socket) do
+          containers = Containers.list_containers_with_tracks(socket.assigns.workspace)
+          {:noreply, assign(socket, :containers, containers)}
+        end
 
-  ## Usage
+        # ConsoleChanged: refresh terminal pane (only if viewing this track)
+        def handle_info(%ConsoleChanged{track_id: track_id}, socket) do
+          if socket.assigns.current_track?.id == track_id do
+            {status, prompt, segments} = Tracks.get_console_state(track_id)
+            socket =
+              socket
+              |> assign(:console_status, status)
+              |> assign(:current_prompt, prompt)
+              |> assign(:console_segments, segments)
+            {:noreply, socket}
+          else
+            {:noreply, socket}
+          end
+        end
 
-      # Broadcasting (from contexts and GenServers)
-      Events.broadcast(ContainerCreated.new(container))
-      Events.broadcast(ContainerUpdated.new(container, :running))
-
-      # Subscribing (from LiveViews)
-      Events.subscribe_to_workspace(workspace_id)
-
-      # Handling (in LiveView handle_info)
-      def handle_info(%Events.ContainerCreated{} = event, socket) do
-        # Add container to menu
+        # ChatChanged: refresh chat pane (only if viewing this track)
+        def handle_info(%ChatChanged{track_id: track_id}, socket) do
+          if socket.assigns.current_track?.id == track_id do
+            {:ok, chat_state} = Tracks.get_chat_state(track_id)
+            {:noreply, assign(socket, :chat_state, chat_state)}
+          else
+            {:noreply, socket}
+          end
+        end
       end
 
-      def handle_info(%Events.ContainerUpdated{} = event, socket) do
-        # Update container status indicator
+  ## Anti-Pattern: Payload Accumulation
+
+  **Do NOT** carry full entity data in events and accumulate it in the UI:
+
+      # ❌ BAD: Event carries payload, UI accumulates
+      def handle_info(%TrackCreated{} = event, socket) do
+        new_track = %Track{id: event.track_id, name: event.name, ...}
+        containers = update_in(socket.assigns.containers, ...)
+        {:noreply, assign(socket, :containers, containers)}
       end
 
-      def handle_info(%Events.TrackCreated{} = event, socket) do
-        # Add track to menu
+  This pattern causes bugs when:
+  - `push_patch` triggers `handle_params` which reloads from database
+  - Multiple events arrive for the same entity
+  - Events are missed and state diverges
+
+  **Instead**, use lightweight notifications:
+
+      # ✅ GOOD: Event notifies, UI fetches fresh state
+      def handle_info(%WorkspaceChanged{}, socket) do
+        containers = Containers.list_containers_with_tracks(socket.assigns.workspace)
+        {:noreply, assign(socket, :containers, containers)}
       end
 
-      def handle_info(%Events.CommandResult{} = event, socket) do
-        # Display command output
+  ## Broadcasting Events
+
+      # From context modules (e.g., Tracks.create_track/2)
+      def create_track(container, attrs) do
+        with {:ok, track} <- Repo.insert(changeset) do
+          Events.broadcast(WorkspaceChanged.new(container.workspace_id))
+          {:ok, track}
+        end
+      end
+
+      # From GenServers (e.g., TrackServer after console update)
+      def handle_info(%ConsoleUpdated{} = event, state) do
+        new_state = process_console_update(state, event)
+        Events.broadcast(ConsoleChanged.new(state.workspace_id, state.track_id))
+        {:noreply, new_state}
       end
   """
 
-  alias Msfailab.Events.ChatStateUpdated
+  alias Msfailab.Events.ChatChanged
   alias Msfailab.Events.CommandIssued
   alias Msfailab.Events.CommandResult
+  alias Msfailab.Events.ConsoleChanged
   alias Msfailab.Events.ConsoleUpdated
-  alias Msfailab.Events.ContainerCreated
-  alias Msfailab.Events.ContainerUpdated
-  alias Msfailab.Events.TrackCreated
-  alias Msfailab.Events.TrackStateUpdated
-  alias Msfailab.Events.TrackUpdated
+  alias Msfailab.Events.WorkspaceChanged
+  alias Msfailab.Events.WorkspacesChanged
   alias Msfailab.Trace
 
   @pubsub Msfailab.PubSub
+  @application_topic "application"
 
   # Topic builders
+
+  @doc """
+  Returns the PubSub topic for application-wide events.
+
+  Events like WorkspacesChanged are broadcast to this topic.
+  """
+  @spec application_topic() :: String.t()
+  def application_topic, do: @application_topic
 
   @doc """
   Returns the PubSub topic for a workspace.
@@ -170,6 +219,24 @@ defmodule Msfailab.Events do
   end
 
   # Subscription functions
+
+  @doc """
+  Subscribe the current process to application-wide events.
+
+  This includes workspace list changes (create, rename, delete).
+  """
+  @spec subscribe_to_application() :: :ok | {:error, term()}
+  def subscribe_to_application do
+    Phoenix.PubSub.subscribe(@pubsub, @application_topic)
+  end
+
+  @doc """
+  Unsubscribe the current process from application-wide events.
+  """
+  @spec unsubscribe_from_application() :: :ok
+  def unsubscribe_from_application do
+    Phoenix.PubSub.unsubscribe(@pubsub, @application_topic)
+  end
 
   @doc """
   Subscribe the current process to all events for a workspace.
@@ -195,31 +262,27 @@ defmodule Msfailab.Events do
   @doc """
   Broadcast an event to its appropriate topic.
 
-  The topic is derived from the event's workspace_id field.
-  All events must include a workspace_id to enable routing.
+  The topic is derived from the event type:
+  - WorkspacesChanged -> application topic
+  - All others -> workspace topic (from workspace_id field)
   """
   @spec broadcast(struct()) :: :ok | {:error, term()}
-  def broadcast(%ContainerCreated{workspace_id: workspace_id} = event) do
+  def broadcast(%WorkspacesChanged{} = event) do
+    Trace.event(event)
+    Phoenix.PubSub.broadcast(@pubsub, @application_topic, event)
+  end
+
+  def broadcast(%WorkspaceChanged{workspace_id: workspace_id} = event) do
     Trace.event(event)
     Phoenix.PubSub.broadcast(@pubsub, workspace_topic(workspace_id), event)
   end
 
-  def broadcast(%ContainerUpdated{workspace_id: workspace_id} = event) do
+  def broadcast(%ConsoleChanged{workspace_id: workspace_id} = event) do
     Trace.event(event)
     Phoenix.PubSub.broadcast(@pubsub, workspace_topic(workspace_id), event)
   end
 
-  def broadcast(%TrackCreated{workspace_id: workspace_id} = event) do
-    Trace.event(event)
-    Phoenix.PubSub.broadcast(@pubsub, workspace_topic(workspace_id), event)
-  end
-
-  def broadcast(%TrackUpdated{workspace_id: workspace_id} = event) do
-    Trace.event(event)
-    Phoenix.PubSub.broadcast(@pubsub, workspace_topic(workspace_id), event)
-  end
-
-  def broadcast(%TrackStateUpdated{workspace_id: workspace_id} = event) do
+  def broadcast(%ChatChanged{workspace_id: workspace_id} = event) do
     Trace.event(event)
     Phoenix.PubSub.broadcast(@pubsub, workspace_topic(workspace_id), event)
   end
@@ -239,38 +302,28 @@ defmodule Msfailab.Events do
     Phoenix.PubSub.broadcast(@pubsub, workspace_topic(workspace_id), event)
   end
 
-  def broadcast(%ChatStateUpdated{workspace_id: workspace_id} = event) do
-    Trace.event(event)
-    Phoenix.PubSub.broadcast(@pubsub, workspace_topic(workspace_id), event)
-  end
-
   @doc """
   Broadcast an event locally (only to subscribers on this node).
 
   Useful for testing or when cross-node distribution isn't needed.
   """
   @spec broadcast_local(struct()) :: :ok | {:error, term()}
-  def broadcast_local(%ContainerCreated{workspace_id: workspace_id} = event) do
+  def broadcast_local(%WorkspacesChanged{} = event) do
+    Trace.event(event)
+    Phoenix.PubSub.local_broadcast(@pubsub, @application_topic, event)
+  end
+
+  def broadcast_local(%WorkspaceChanged{workspace_id: workspace_id} = event) do
     Trace.event(event)
     Phoenix.PubSub.local_broadcast(@pubsub, workspace_topic(workspace_id), event)
   end
 
-  def broadcast_local(%ContainerUpdated{workspace_id: workspace_id} = event) do
+  def broadcast_local(%ConsoleChanged{workspace_id: workspace_id} = event) do
     Trace.event(event)
     Phoenix.PubSub.local_broadcast(@pubsub, workspace_topic(workspace_id), event)
   end
 
-  def broadcast_local(%TrackCreated{workspace_id: workspace_id} = event) do
-    Trace.event(event)
-    Phoenix.PubSub.local_broadcast(@pubsub, workspace_topic(workspace_id), event)
-  end
-
-  def broadcast_local(%TrackUpdated{workspace_id: workspace_id} = event) do
-    Trace.event(event)
-    Phoenix.PubSub.local_broadcast(@pubsub, workspace_topic(workspace_id), event)
-  end
-
-  def broadcast_local(%TrackStateUpdated{workspace_id: workspace_id} = event) do
+  def broadcast_local(%ChatChanged{workspace_id: workspace_id} = event) do
     Trace.event(event)
     Phoenix.PubSub.local_broadcast(@pubsub, workspace_topic(workspace_id), event)
   end
@@ -286,11 +339,6 @@ defmodule Msfailab.Events do
   end
 
   def broadcast_local(%ConsoleUpdated{workspace_id: workspace_id} = event) do
-    Trace.event(event)
-    Phoenix.PubSub.local_broadcast(@pubsub, workspace_topic(workspace_id), event)
-  end
-
-  def broadcast_local(%ChatStateUpdated{workspace_id: workspace_id} = event) do
     Trace.event(event)
     Phoenix.PubSub.local_broadcast(@pubsub, workspace_topic(workspace_id), event)
   end

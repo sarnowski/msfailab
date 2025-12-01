@@ -679,8 +679,7 @@ defmodule MsfailabWeb.WorkspaceComponents do
       <% :message -> %>
         <.message_entry entry={@entry} />
       <% :tool_invocation -> %>
-        <!-- Hide successfully completed tool invocations (command output visible in console) -->
-        <.tool_invocation_entry :if={@entry.tool_status != :success} entry={@entry} />
+        <.tool_entry entry={@entry} />
     <% end %>
     """
   end
@@ -780,71 +779,418 @@ defmodule MsfailabWeb.WorkspaceComponents do
     """
   end
 
-  # Renders a tool invocation entry with approval buttons.
+  # ===========================================================================
+  # Tool Entry Components - Pluggable UI System
+  # ===========================================================================
   #
-  # Tool invocations show the tool name, command/arguments, current status,
-  # and approve/deny buttons when in pending status.
+  # This section implements a pluggable rendering system for tool invocations.
+  # Each tool can define custom rendering for different states while sharing
+  # common building blocks.
   #
-  # Tool Status States:
-  # - :pending - Approve/Deny buttons
-  # - :approved - "Approved" badge
-  # - :denied - "Denied" badge
-  # - :executing - Spinner with "Running..."
-  # - :success - Green checkmark
-  # - :error - Red error icon
-  # - :timeout - Yellow timeout icon
-  defp tool_invocation_entry(assigns) do
+  # Data Flow:
+  #   @chat_state.entries → :for loop → chat_entry(entry) → tool_entry(entry)
+  #                                                              │
+  #                                           dispatch by entry.tool_status
+  #                                                              │
+  #     ├── :pending   → tool_pending_box (common)
+  #     ├── :declined  → tool_declined_box (common)
+  #     ├── :executing → tool_executing_box (per-tool dispatch)
+  #     ├── :success   → tool_finished_box (per-tool dispatch)
+  #     └── :error     → tool_error_box (default + per-tool override)
+
+  # Main router - dispatches by tool_status
+  defp tool_entry(assigns) do
     ~H"""
-    <!-- Tool invocation - right aligned (from assistant) -->
+    <%= case @entry.tool_status do %>
+      <% :pending -> %>
+        <.tool_pending_box entry={@entry} />
+      <% :declined -> %>
+        <.tool_declined_box entry={@entry} />
+      <% :executing -> %>
+        <.tool_executing_box entry={@entry} />
+      <% :success -> %>
+        <.tool_finished_box entry={@entry} />
+      <% status when status in [:error, :timeout] -> %>
+        <.tool_error_box entry={@entry} />
+      <% _ -> %>
+        <!-- Fallback for unknown status -->
+        <.tool_pending_box entry={@entry} />
+    <% end %>
+    """
+  end
+
+  # ---------------------------------------------------------------------------
+  # Shared Helpers (Building Blocks)
+  # ---------------------------------------------------------------------------
+
+  # Container component with icon, tool name, timestamp, status badge, and inner content.
+  # This provides the common "box" structure used by pending/declined states.
+  attr :entry, Msfailab.Tracks.ChatEntry, required: true
+  attr :status_override, :atom, default: nil
+  slot :inner_block, required: true
+
+  defp tool_box(assigns) do
+    status = assigns.status_override || assigns.entry.tool_status
+    # Use warning border for pending state to draw attention
+    border_class = if status == :pending, do: "border-warning", else: "border-base-300"
+
+    assigns = assigns |> assign(:status, status) |> assign(:border_class, border_class)
+
+    ~H"""
+    <!-- Tool box container - right aligned -->
     <div class="flex justify-end">
-      <div class="min-w-[60%] max-w-[80%] bg-base-200/50 rounded-box p-3 border border-base-300/50">
+      <div class={["min-w-[60%] max-w-[90%] bg-base-200 rounded-box p-3 border", @border_class]}>
         <!-- Header with tool name and status -->
         <div class="flex items-center gap-2 mb-2">
-          <.icon name="hero-command-line" class="size-4 text-primary" />
-          <span class="text-xs font-medium text-primary">
+          <.icon name="hero-command-line" class="size-4 text-base-content" />
+          <span class="text-xs font-medium text-base-content">
             {tool_display_name(@entry.tool_name)}
           </span>
-          <span class="text-xs text-base-content/40">
+          <span class="text-xs text-base-content/60">
             <.entry_timestamp timestamp={@entry.timestamp} />
           </span>
           <div class="ml-auto">
-            <.tool_status_badge status={@entry.tool_status} />
+            <.tool_status_badge status={@status} />
           </div>
         </div>
-        
-    <!-- Command display with console prompt -->
-        <div class="bg-neutral/50 rounded px-2 py-1.5 mb-2 font-mono">
-          <code class="text-sm text-neutral-content break-all">
-            <span :if={@entry.console_prompt && @entry.console_prompt != ""} class="text-success">
-              {@entry.console_prompt}
-            </span>
-            <strong>{get_tool_command(@entry.tool_arguments)}</strong>
-          </code>
-        </div>
-        
-    <!-- Approval buttons (only when pending) -->
-        <%= if @entry.tool_status == :pending do %>
-          <div class="flex gap-2 justify-end">
-            <button
-              type="button"
-              phx-click="deny_tool"
-              phx-value-entry-id={@entry.id}
-              class="btn btn-xs btn-ghost text-error hover:bg-error/10"
-            >
-              <.icon name="hero-x-mark" class="size-3" /> Deny
-            </button>
-            <button
-              type="button"
-              phx-click="approve_tool"
-              phx-value-entry-id={@entry.id}
-              class="btn btn-xs btn-primary"
-            >
-              <.icon name="hero-check" class="size-3" /> Approve
-            </button>
-          </div>
-        <% end %>
+        <!-- Tool-specific content -->
+        {render_slot(@inner_block)}
       </div>
     </div>
+    """
+  end
+
+  # Terminal-style box mimicking the main terminal panel design.
+  # Used by executing states and finished bash commands.
+  attr :title, :string, required: true
+  attr :timestamp, DateTime, required: true
+  attr :status, :atom, default: nil
+  slot :inner_block, required: true
+
+  defp terminal_box(assigns) do
+    ~H"""
+    <div class="flex justify-end">
+      <div class="min-w-[60%] max-w-[90%] bg-neutral rounded-box border border-base-300 overflow-hidden">
+        <!-- Terminal header -->
+        <div class="flex items-center justify-between px-3 py-1.5 bg-neutral-focus border-b border-base-300">
+          <div class="flex items-center gap-2">
+            <div class="flex gap-1.5">
+              <div class="size-2.5 rounded-full bg-error/80" />
+              <div class="size-2.5 rounded-full bg-warning/80" />
+              <div class="size-2.5 rounded-full bg-success/80" />
+            </div>
+            <span class="text-xs font-mono text-neutral-content/60 ml-2">{@title}</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <!-- Badge before time when executing -->
+            <.tool_status_badge :if={@status} status={@status} />
+            <span class="text-xs text-neutral-content/40">
+              <.entry_timestamp timestamp={@timestamp} />
+            </span>
+          </div>
+        </div>
+        <!-- Terminal content -->
+        <div class="p-3 font-mono text-sm text-neutral-content">
+          {render_slot(@inner_block)}
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  # Renders a command with prompt in a monospace box.
+  # Used by pending and declined states.
+  attr :prompt, :string, required: true
+  attr :command, :string, required: true
+
+  defp command_display(assigns) do
+    ~H"""
+    <div class="bg-neutral rounded px-3 py-2 font-mono text-sm text-neutral-content">
+      <span :if={@prompt != ""} class="text-success">{@prompt}</span><strong>{@command}</strong>
+    </div>
+    """
+  end
+
+  # Renders terminal-style output (raw pre-formatted text).
+  # Used inside terminal_box for finished commands.
+  attr :output, :string, required: true
+  attr :class, :string, default: ""
+
+  defp terminal_output(assigns) do
+    ~H"""
+    <pre class={["whitespace-pre-wrap overflow-x-auto max-h-48 overflow-y-auto", @class]}>{@output}</pre>
+    """
+  end
+
+  # ---------------------------------------------------------------------------
+  # Common Status Renderers
+  # ---------------------------------------------------------------------------
+
+  # Pending state for msf_command - uses Console helper for proper prompt styling
+  defp tool_pending_box(%{entry: %{tool_name: "msf_command"}} = assigns) do
+    prompt = assigns.entry.console_prompt || "msf6 > "
+    command = get_tool_command(assigns.entry.tool_arguments)
+    assigns = assigns |> assign(:prompt, prompt) |> assign(:command, command)
+
+    ~H"""
+    <.tool_box entry={@entry}>
+      <div class="bg-neutral rounded px-3 py-2 font-mono text-sm text-neutral-content">
+        {MsfailabWeb.Console.render_console_command(@prompt, @command)}
+      </div>
+      <.approval_buttons entry_id={@entry.id} />
+    </.tool_box>
+    """
+  end
+
+  # Pending state for bash_command - uses Console helper for proper prompt styling
+  defp tool_pending_box(%{entry: %{tool_name: "bash_command"}} = assigns) do
+    command = get_tool_command(assigns.entry.tool_arguments)
+    assigns = assign(assigns, :command, command)
+
+    ~H"""
+    <.tool_box entry={@entry}>
+      <div class="bg-neutral rounded px-3 py-2 font-mono text-sm text-neutral-content">
+        {MsfailabWeb.Console.render_bash_command(@command)}
+      </div>
+      <.approval_buttons entry_id={@entry.id} />
+    </.tool_box>
+    """
+  end
+
+  # Default pending state for unknown tools
+  defp tool_pending_box(assigns) do
+    prompt = get_tool_prompt(assigns.entry)
+    command = get_tool_command(assigns.entry.tool_arguments)
+    assigns = assigns |> assign(:prompt, prompt) |> assign(:command, command)
+
+    ~H"""
+    <.tool_box entry={@entry}>
+      <.command_display prompt={@prompt} command={@command} />
+      <.approval_buttons entry_id={@entry.id} />
+    </.tool_box>
+    """
+  end
+
+  # Shared approval buttons component
+  attr :entry_id, :any, required: true
+
+  defp approval_buttons(assigns) do
+    ~H"""
+    <div class="flex gap-2 justify-end mt-2">
+      <button
+        type="button"
+        phx-click="deny_tool"
+        phx-value-entry-id={@entry_id}
+        class="btn btn-sm btn-error btn-outline"
+      >
+        <.icon name="hero-x-mark" class="size-4" /> Deny
+      </button>
+      <button
+        type="button"
+        phx-click="approve_tool"
+        phx-value-entry-id={@entry_id}
+        class="btn btn-sm btn-secondary"
+      >
+        <.icon name="hero-check" class="size-4" /> Approve
+      </button>
+    </div>
+    """
+  end
+
+  # Declined state for msf_command
+  defp tool_declined_box(%{entry: %{tool_name: "msf_command"}} = assigns) do
+    prompt = assigns.entry.console_prompt || "msf6 > "
+    command = get_tool_command(assigns.entry.tool_arguments)
+    assigns = assigns |> assign(:prompt, prompt) |> assign(:command, command)
+
+    ~H"""
+    <.tool_box entry={@entry} status_override={:declined}>
+      <div class="bg-neutral rounded px-3 py-2 font-mono text-sm text-neutral-content">
+        {MsfailabWeb.Console.render_console_command(@prompt, @command)}
+      </div>
+    </.tool_box>
+    """
+  end
+
+  # Declined state for bash_command
+  defp tool_declined_box(%{entry: %{tool_name: "bash_command"}} = assigns) do
+    command = get_tool_command(assigns.entry.tool_arguments)
+    assigns = assign(assigns, :command, command)
+
+    ~H"""
+    <.tool_box entry={@entry} status_override={:declined}>
+      <div class="bg-neutral rounded px-3 py-2 font-mono text-sm text-neutral-content">
+        {MsfailabWeb.Console.render_bash_command(@command)}
+      </div>
+    </.tool_box>
+    """
+  end
+
+  # Default declined state for unknown tools
+  defp tool_declined_box(assigns) do
+    prompt = get_tool_prompt(assigns.entry)
+    command = get_tool_command(assigns.entry.tool_arguments)
+    assigns = assigns |> assign(:prompt, prompt) |> assign(:command, command)
+
+    ~H"""
+    <.tool_box entry={@entry} status_override={:declined}>
+      <.command_display prompt={@prompt} command={@command} />
+    </.tool_box>
+    """
+  end
+
+  # ---------------------------------------------------------------------------
+  # Per-Tool Executing Renderers
+  # ---------------------------------------------------------------------------
+
+  # Executing state for msf_command - terminal style with blinking cursor
+  defp tool_executing_box(%{entry: %{tool_name: "msf_command"}} = assigns) do
+    prompt = assigns.entry.console_prompt || "msf6 > "
+    command = get_tool_command(assigns.entry.tool_arguments)
+    assigns = assigns |> assign(:prompt, prompt) |> assign(:command, command)
+
+    ~H"""
+    <.terminal_box title="msfconsole" timestamp={@entry.timestamp} status={:executing}>
+      <div>{MsfailabWeb.Console.render_console_command(@prompt, @command)}</div>
+      <div class="mt-1"><span class="terminal-cursor"></span></div>
+    </.terminal_box>
+    """
+  end
+
+  # Executing state for bash_command - terminal style with blinking cursor
+  defp tool_executing_box(%{entry: %{tool_name: "bash_command"}} = assigns) do
+    command = get_tool_command(assigns.entry.tool_arguments)
+    assigns = assign(assigns, :command, command)
+
+    ~H"""
+    <.terminal_box title="bash" timestamp={@entry.timestamp} status={:executing}>
+      <div>{MsfailabWeb.Console.render_bash_command(@command)}</div>
+      <div class="mt-1"><span class="terminal-cursor"></span></div>
+    </.terminal_box>
+    """
+  end
+
+  # Default executing state for unknown tools
+  defp tool_executing_box(assigns) do
+    prompt = get_tool_prompt(assigns.entry)
+    command = get_tool_command(assigns.entry.tool_arguments)
+    assigns = assigns |> assign(:prompt, prompt) |> assign(:command, command)
+
+    ~H"""
+    <.tool_box entry={@entry}>
+      <.command_display prompt={@prompt} command={@command} />
+    </.tool_box>
+    """
+  end
+
+  # ---------------------------------------------------------------------------
+  # Per-Tool Finished Renderers (Main Differentiation)
+  # ---------------------------------------------------------------------------
+
+  # Finished state for msf_command - collapsed one-liner, expand to terminal box
+  # MSF output is visible in the console panel, so we show a minimal collapsed view.
+  defp tool_finished_box(%{entry: %{tool_name: "msf_command"}} = assigns) do
+    prompt = assigns.entry.console_prompt || "msf6 > "
+    command = get_tool_command(assigns.entry.tool_arguments)
+    output = assigns.entry.result_content || ""
+
+    assigns =
+      assigns |> assign(:prompt, prompt) |> assign(:command, command) |> assign(:output, output)
+
+    ~H"""
+    <div class="flex justify-end">
+      <details class="min-w-[60%] max-w-[90%] bg-neutral/70 rounded-box border border-base-300/30 group">
+        <summary class="flex items-center gap-2 px-3 py-2 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
+          <code class="text-xs text-neutral-content/80">
+            {MsfailabWeb.Console.render_console_command(@prompt, @command)}
+          </code>
+          <.icon
+            name="hero-chevron-down"
+            class="size-3 text-neutral-content/50 transition-transform group-open:rotate-180 ml-auto"
+          />
+        </summary>
+        <!-- Expanded: terminal box style -->
+        <div class="mx-2 mb-2 bg-neutral rounded-box border border-base-300 overflow-hidden">
+          <div class="flex items-center justify-between px-3 py-1.5 bg-neutral-focus border-b border-base-300">
+            <div class="flex items-center gap-2">
+              <div class="flex gap-1.5">
+                <div class="size-2.5 rounded-full bg-error/80" />
+                <div class="size-2.5 rounded-full bg-warning/80" />
+                <div class="size-2.5 rounded-full bg-success/80" />
+              </div>
+              <span class="text-xs font-mono text-neutral-content/60 ml-2">msfconsole</span>
+            </div>
+            <span class="text-xs text-neutral-content/40">
+              <.entry_timestamp timestamp={@entry.timestamp} />
+            </span>
+          </div>
+          <div class="p-3 font-mono text-sm text-neutral-content">
+            {MsfailabWeb.Console.render_console_output(@prompt, @command, @output)}
+          </div>
+        </div>
+      </details>
+    </div>
+    """
+  end
+
+  # Finished state for bash_command - terminal box with output
+  # Bash output is NOT visible elsewhere, so we prominently display it.
+  defp tool_finished_box(%{entry: %{tool_name: "bash_command"}} = assigns) do
+    command = get_tool_command(assigns.entry.tool_arguments)
+    output = assigns.entry.result_content || ""
+
+    assigns = assigns |> assign(:command, command) |> assign(:output, output)
+
+    ~H"""
+    <.terminal_box title="bash" timestamp={@entry.timestamp}>
+      {MsfailabWeb.Console.render_bash_output(@command, @output)}
+    </.terminal_box>
+    """
+  end
+
+  # Default finished state for unknown tools
+  defp tool_finished_box(assigns) do
+    prompt = get_tool_prompt(assigns.entry)
+    command = get_tool_command(assigns.entry.tool_arguments)
+    output = assigns.entry.result_content || ""
+
+    assigns =
+      assigns |> assign(:prompt, prompt) |> assign(:command, command) |> assign(:output, output)
+
+    ~H"""
+    <.tool_box entry={@entry}>
+      <.command_display prompt={@prompt} command={@command} />
+      <div
+        :if={@output != ""}
+        class="mt-2 bg-neutral rounded px-2 py-1.5 font-mono text-xs text-neutral-content overflow-x-auto max-h-48 overflow-y-auto"
+      >
+        <.terminal_output output={@output} />
+      </div>
+    </.tool_box>
+    """
+  end
+
+  # ---------------------------------------------------------------------------
+  # Error Renderers
+  # ---------------------------------------------------------------------------
+
+  # Error/timeout state - shows command and error message.
+  # Can be overridden per-tool if needed.
+  defp tool_error_box(assigns) do
+    prompt = get_tool_prompt(assigns.entry)
+    command = get_tool_command(assigns.entry.tool_arguments)
+    error = assigns.entry.result_content || "An error occurred"
+
+    assigns =
+      assigns |> assign(:prompt, prompt) |> assign(:command, command) |> assign(:error, error)
+
+    ~H"""
+    <.tool_box entry={@entry}>
+      <.command_display prompt={@prompt} command={@command} />
+      <div class="mt-2 bg-error/10 rounded px-2 py-1.5 border border-error/30">
+        <code class="text-xs text-error break-all">{@error}</code>
+      </div>
+    </.tool_box>
     """
   end
 
@@ -884,6 +1230,7 @@ defmodule MsfailabWeb.WorkspaceComponents do
 
   # Helper function to get display name for tools
   defp tool_display_name("msf_command"), do: "Metasploit Command"
+  defp tool_display_name("bash_command"), do: "Bash Command"
   defp tool_display_name(name), do: name
 
   # Helper function to extract command from tool arguments
@@ -892,6 +1239,18 @@ defmodule MsfailabWeb.WorkspaceComponents do
   end
 
   defp get_tool_command(_), do: ""
+
+  # Helper function to get prompt for a tool entry.
+  # MSF commands use the dynamic console_prompt, bash commands use hardcoded "# ".
+  defp get_tool_prompt(%{tool_name: "msf_command"} = entry) do
+    entry.console_prompt || ""
+  end
+
+  defp get_tool_prompt(%{tool_name: "bash_command"}) do
+    "# "
+  end
+
+  defp get_tool_prompt(_entry), do: ""
 
   @doc """
   Formats a timestamp for display in chat entries.
@@ -1008,7 +1367,7 @@ defmodule MsfailabWeb.WorkspaceComponents do
         <div class="whitespace-pre-wrap">{MsfailabWeb.Console.to_html(text)}</div>
       <% {:command_line, prompt, command} -> %>
         <div class="bg-base-content/5 -mx-3 px-3">
-          <span class="text-success">{prompt}</span><strong><%= command %></strong>
+          {MsfailabWeb.Console.render_console_command(prompt, command)}
         </div>
       <% :restart_separator -> %>
         <div class="border-t border-error/50 my-2 relative">
@@ -1066,7 +1425,7 @@ defmodule MsfailabWeb.WorkspaceComponents do
     <%= if @status == :ready do %>
       <!-- Show current prompt with cursor -->
       <div>
-        <span class="text-success">{@prompt}</span><span class="terminal-cursor"></span>
+        {MsfailabWeb.Console.format_prompt(@prompt)}<span class="terminal-cursor"></span>
       </div>
     <% end %>
     """

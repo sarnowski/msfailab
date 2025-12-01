@@ -68,8 +68,7 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
       tool_name,
       Keyword.get(opts, :arguments, %{}),
       status,
-      Keyword.get(opts, :console_prompt, "msf6 >"),
-      DateTime.utc_now()
+      console_prompt: Keyword.get(opts, :console_prompt, "msf6 >")
     )
   end
 
@@ -146,7 +145,7 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
       assert new_turn.status == :executing_tools
       assert new_turn.tool_invocations[1].status == :executing
       assert Enum.at(new_entries, 0).tool_status == :executing
-      assert {:send_command, "help"} in actions
+      assert {:send_msf_command, "help"} in actions
     end
 
     test "does not execute when console busy" do
@@ -333,7 +332,7 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
       assert new_turn.tool_invocations[1].status == :executing
       assert new_turn.tool_invocations[1].started_at != nil
       assert Enum.at(new_entries, 0).tool_status == :executing
-      assert {:send_command, "help"} in actions
+      assert {:send_msf_command, "help"} in actions
       assert {:update_tool_status, 1, "executing", []} in actions
     end
 
@@ -346,7 +345,7 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
       {_new_turn, _new_entries, actions} = Turn.start_tool_execution(turn, [entry], 1)
 
       # Should use empty string as default
-      assert {:send_command, ""} in actions
+      assert {:send_msf_command, ""} in actions
     end
 
     test "marks unknown tool as error" do
@@ -378,7 +377,7 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
   end
 
   describe "complete_tool_execution/4" do
-    test "completes executing tool" do
+    test "completes executing tool and sets result_content on entry" do
       started_at = DateTime.add(DateTime.utc_now(), -1, :second)
 
       tool_inv =
@@ -397,15 +396,19 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
         )
 
       {new_turn, new_entries, actions} =
-        Turn.complete_tool_execution(turn, [entry], "output", "cmd-1")
+        Turn.complete_tool_execution(turn, [entry], "command output here", "cmd-1")
 
       assert new_turn.tool_invocations[1].status == :success
-      assert Enum.at(new_entries, 0).tool_status == :success
+
+      # Verify entry has both status AND result_content updated
+      completed_entry = Enum.at(new_entries, 0)
+      assert completed_entry.tool_status == :success
+      assert completed_entry.result_content == "command output here"
 
       assert {:update_tool_status, 1, "success", opts} =
                Enum.find(actions, &match?({:update_tool_status, _, "success", _}, &1))
 
-      assert opts[:result_content] == "output"
+      assert opts[:result_content] == "command output here"
       assert opts[:duration_ms] >= 0
       assert :reconcile in actions
     end
@@ -414,6 +417,90 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
       turn = make_turn(tool_invocations: %{})
 
       assert :no_executing_tool = Turn.complete_tool_execution(turn, [], "output", nil)
+    end
+  end
+
+  describe "complete_bash_tool/4" do
+    test "completes bash tool and sets result_content on entry" do
+      started_at = DateTime.add(DateTime.utc_now(), -1, :second)
+
+      tool_inv =
+        make_tool_invocation("call_1", "bash_command", :executing,
+          command_id: "bash-cmd-1",
+          started_at: started_at
+        )
+
+      entry = make_tool_entry(1, 1, "bash_command", :executing)
+
+      turn =
+        make_turn(
+          status: :executing_tools,
+          tool_invocations: %{1 => tool_inv},
+          command_to_tool: %{"bash-cmd-1" => 1}
+        )
+
+      {new_turn, new_entries, actions} =
+        Turn.complete_bash_tool(turn, [entry], "bash-cmd-1", "bash output\nwith lines")
+
+      assert new_turn.tool_invocations[1].status == :success
+
+      # Verify entry has both status AND result_content updated
+      completed_entry = Enum.at(new_entries, 0)
+      assert completed_entry.tool_status == :success
+      assert completed_entry.result_content == "bash output\nwith lines"
+
+      assert {:update_tool_status, 1, "success", opts} =
+               Enum.find(actions, &match?({:update_tool_status, _, "success", _}, &1))
+
+      assert opts[:result_content] == "bash output\nwith lines"
+      assert opts[:duration_ms] >= 0
+      assert :reconcile in actions
+      assert :broadcast_chat_state in actions
+    end
+
+    test "returns no_executing_tool when command_id not found" do
+      turn = make_turn(tool_invocations: %{}, command_to_tool: %{})
+
+      assert :no_executing_tool = Turn.complete_bash_tool(turn, [], "unknown-id", "output")
+    end
+  end
+
+  describe "error_bash_tool/4" do
+    test "marks bash tool as error with error message" do
+      started_at = DateTime.add(DateTime.utc_now(), -1, :second)
+
+      tool_inv =
+        make_tool_invocation("call_1", "bash_command", :executing,
+          command_id: "bash-cmd-1",
+          started_at: started_at
+        )
+
+      entry = make_tool_entry(1, 1, "bash_command", :executing)
+
+      turn =
+        make_turn(
+          status: :executing_tools,
+          tool_invocations: %{1 => tool_inv},
+          command_to_tool: %{"bash-cmd-1" => 1}
+        )
+
+      {new_turn, new_entries, actions} =
+        Turn.error_bash_tool(turn, [entry], "bash-cmd-1", "command not found")
+
+      assert new_turn.tool_invocations[1].status == :error
+      assert Enum.at(new_entries, 0).tool_status == :error
+
+      assert {:update_tool_status, 1, "error", opts} =
+               Enum.find(actions, &match?({:update_tool_status, _, "error", _}, &1))
+
+      assert opts[:error_message] == "command not found"
+      assert :reconcile in actions
+    end
+
+    test "returns no_executing_tool when command_id not found" do
+      turn = make_turn(tool_invocations: %{}, command_to_tool: %{})
+
+      assert :no_executing_tool = Turn.error_bash_tool(turn, [], "unknown-id", "error")
     end
   end
 

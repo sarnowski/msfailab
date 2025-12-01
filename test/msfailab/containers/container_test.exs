@@ -19,7 +19,7 @@ defmodule Msfailab.Containers.ContainerTest do
 
   alias Msfailab.Containers.Container
   alias Msfailab.Events
-  alias Msfailab.Events.ContainerUpdated
+  alias Msfailab.Events.WorkspaceChanged
 
   # By default, keep containers in :starting state by failing MSGRPC login.
   # Tests that need to test :running state should override this stub.
@@ -436,8 +436,8 @@ defmodule Msfailab.Containers.ContainerTest do
       assert {status, _container_id} = Container.get_status(800)
       assert status == :running
 
-      # Should broadcast container status
-      assert_receive %ContainerUpdated{status: :running}, 100
+      # Should broadcast workspace changed event
+      assert_receive %WorkspaceChanged{}, 100
     end
 
     test "retries MSGRPC login on failure with backoff" do

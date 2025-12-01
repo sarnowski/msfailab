@@ -48,3 +48,6 @@ npm-debug.log
 
 # Pending changes log (agent coordination)
 PENDING.md
+
+# Typical storage for temporary AI plans
+/PLAN*

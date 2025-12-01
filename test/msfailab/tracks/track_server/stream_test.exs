@@ -302,9 +302,7 @@ defmodule Msfailab.Tracks.TrackServer.StreamTest do
           "call_123",
           "msf_command",
           %{"command" => "help"},
-          :pending,
-          "",
-          DateTime.utc_now()
+          :pending
         )
 
       # Note: tool_invocation sets streaming: false by default, but let's verify

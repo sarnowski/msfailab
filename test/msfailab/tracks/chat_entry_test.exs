@@ -106,7 +106,7 @@ defmodule Msfailab.Tracks.ChatEntryTest do
     end
   end
 
-  describe "tool_invocation/8" do
+  describe "tool_invocation/7" do
     test "creates a tool invocation entry with all fields" do
       timestamp = DateTime.utc_now()
 
@@ -118,8 +118,8 @@ defmodule Msfailab.Tracks.ChatEntryTest do
           "msf_command",
           %{"command" => "search apache"},
           :pending,
-          "msf6 > ",
-          timestamp
+          console_prompt: "msf6 > ",
+          timestamp: timestamp
         )
 
       assert entry.id == 123
@@ -136,7 +136,7 @@ defmodule Msfailab.Tracks.ChatEntryTest do
 
     test "supports all tool status values" do
       for status <- [:pending, :approved, :denied, :executing, :success, :error, :timeout] do
-        entry = ChatEntry.tool_invocation("id", 1, "call", "tool", %{}, status, "")
+        entry = ChatEntry.tool_invocation("id", 1, "call", "tool", %{}, status)
         assert entry.tool_status == status
       end
     end
@@ -144,6 +144,20 @@ defmodule Msfailab.Tracks.ChatEntryTest do
     test "defaults console_prompt to empty string" do
       entry = ChatEntry.tool_invocation("id", 1, "call", "tool", %{}, :pending)
       assert entry.console_prompt == ""
+    end
+
+    test "defaults result_content to nil" do
+      entry = ChatEntry.tool_invocation("id", 1, "call", "tool", %{}, :success)
+      assert entry.result_content == nil
+    end
+
+    test "accepts result_content option" do
+      entry =
+        ChatEntry.tool_invocation("id", 1, "call", "tool", %{}, :success,
+          result_content: "command output here"
+        )
+
+      assert entry.result_content == "command output here"
     end
   end
 

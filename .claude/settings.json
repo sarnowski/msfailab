@@ -18,6 +18,7 @@
       "Bash(npm:*)",
 
       "Bash(psql:*)",
+      "Bash(PGPASSWORD=postgres psql:*)",
       "Bash(pg_dump:*)",
 
       "Bash(git log:*)",

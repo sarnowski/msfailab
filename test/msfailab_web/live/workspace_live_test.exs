@@ -20,10 +20,7 @@ defmodule MsfailabWeb.WorkspaceLiveTest do
   import Phoenix.LiveViewTest
 
   alias Msfailab.Containers
-  alias Msfailab.Events.ContainerCreated
-  alias Msfailab.Events.ContainerUpdated
-  alias Msfailab.Events.TrackCreated
-  alias Msfailab.Events.TrackUpdated
+  alias Msfailab.Events.WorkspaceChanged
   alias Msfailab.Tracks
   alias Msfailab.Workspaces
 
@@ -229,105 +226,32 @@ defmodule MsfailabWeb.WorkspaceLiveTest do
   # ===========================================================================
 
   describe "handle_info for PubSub events" do
-    test "ContainerCreated adds container to list", %{conn: conn, workspace: workspace} do
-      {:ok, view, _html} = live(conn, ~p"/#{workspace.slug}")
-
-      # Simulate ContainerCreated event
-      event = %ContainerCreated{
-        workspace_id: workspace.id,
-        container_id: 999,
-        slug: "new-pubsub-container",
-        name: "New PubSub Container",
-        docker_image: "test:latest",
-        timestamp: DateTime.utc_now()
-      }
-
-      send(view.pid, event)
-
-      # Container should appear in the view
-      html = render(view)
-      assert html =~ "New PubSub Container"
-    end
-
-    test "ContainerUpdated updates container in list", %{
+    test "WorkspaceChanged refreshes containers and tracks", %{
       conn: conn,
       workspace: workspace,
       container: container
     } do
       {:ok, view, _html} = live(conn, ~p"/#{workspace.slug}")
 
-      # Simulate ContainerUpdated event
-      event = %ContainerUpdated{
-        workspace_id: workspace.id,
-        container_id: container.id,
-        slug: container.slug,
-        name: "Updated Container Name",
-        docker_image: container.docker_image,
-        status: :running,
-        timestamp: DateTime.utc_now()
-      }
+      # Create a new track in the database (simulating another user's action)
+      {:ok, new_track} =
+        Tracks.create_track(container, %{
+          name: "New Track From Event",
+          slug: "new-track-event"
+        })
 
+      # Simulate WorkspaceChanged event (triggers re-fetch from database)
+      event = WorkspaceChanged.new(workspace.id)
       send(view.pid, event)
 
-      # Container name should be updated
+      # New track should appear after the refresh
       html = render(view)
-      assert html =~ "Updated Container Name"
+      assert html =~ new_track.name
     end
 
-    test "TrackCreated adds track to container", %{
+    test "WorkspaceChanged handles archived tracks correctly", %{
       conn: conn,
       workspace: workspace,
-      container: container
-    } do
-      {:ok, view, _html} = live(conn, ~p"/#{workspace.slug}")
-
-      # Simulate TrackCreated event
-      event = %TrackCreated{
-        workspace_id: workspace.id,
-        container_id: container.id,
-        track_id: 999,
-        slug: "new-pubsub-track",
-        name: "New PubSub Track",
-        timestamp: DateTime.utc_now()
-      }
-
-      send(view.pid, event)
-
-      # Track should appear in the view
-      html = render(view)
-      assert html =~ "New PubSub Track"
-    end
-
-    test "TrackUpdated updates track name", %{
-      conn: conn,
-      workspace: workspace,
-      container: container,
-      track: track
-    } do
-      {:ok, view, _html} = live(conn, ~p"/#{workspace.slug}")
-
-      # Simulate TrackUpdated event
-      event = %TrackUpdated{
-        workspace_id: workspace.id,
-        container_id: container.id,
-        track_id: track.id,
-        slug: track.slug,
-        name: "Updated Track Name",
-        archived_at: nil,
-        timestamp: DateTime.utc_now()
-      }
-
-      send(view.pid, event)
-
-      # Track name should be updated
-      html = render(view)
-      assert html =~ "Updated Track Name"
-    end
-
-    test "TrackUpdated with archived_at removes track from list", %{
-      conn: conn,
-      workspace: workspace,
-      container: container,
       track: track
     } do
       {:ok, view, _html} = live(conn, ~p"/#{workspace.slug}")
@@ -336,20 +260,14 @@ defmodule MsfailabWeb.WorkspaceLiveTest do
       html = render(view)
       assert html =~ track.name
 
-      # Simulate TrackUpdated event with archived_at
-      event = %TrackUpdated{
-        workspace_id: workspace.id,
-        container_id: container.id,
-        track_id: track.id,
-        slug: track.slug,
-        name: track.name,
-        archived_at: DateTime.utc_now(),
-        timestamp: DateTime.utc_now()
-      }
+      # Archive the track in the database
+      {:ok, _archived} = Tracks.archive_track(track)
 
+      # Simulate WorkspaceChanged event (triggers re-fetch from database)
+      event = WorkspaceChanged.new(workspace.id)
       send(view.pid, event)
 
-      # Track should be removed from the view
+      # Track should be removed from the view after refresh
       html = render(view)
       refute html =~ track.name
     end

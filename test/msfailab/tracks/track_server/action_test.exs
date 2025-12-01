@@ -21,8 +21,8 @@ defmodule Msfailab.Tracks.TrackServer.ActionTest do
 
   alias Msfailab.Containers
   alias Msfailab.Events
-  alias Msfailab.Events.ChatStateUpdated
-  alias Msfailab.Events.TrackStateUpdated
+  alias Msfailab.Events.ChatChanged
+  alias Msfailab.Events.ConsoleChanged
   alias Msfailab.Tracks
   alias Msfailab.Tracks.ChatContext
   alias Msfailab.Tracks.ConsoleHistoryBlock
@@ -78,7 +78,7 @@ defmodule Msfailab.Tracks.TrackServer.ActionTest do
       new_state = Action.execute_all(state, actions)
 
       assert new_state == state
-      assert_receive %ChatStateUpdated{}
+      assert_receive %ChatChanged{}
     end
 
     test "handles empty action list" do
@@ -95,26 +95,26 @@ defmodule Msfailab.Tracks.TrackServer.ActionTest do
   # ===========================================================================
 
   describe "execute/2 - :broadcast_track_state" do
-    test "broadcasts TrackStateUpdated event" do
+    test "broadcasts ConsoleChanged event" do
       state = make_state(track_id: 42, workspace_id: 10)
       Events.subscribe_to_workspace(10)
 
       new_state = Action.execute(:broadcast_track_state, state)
 
       assert new_state == state
-      assert_receive %TrackStateUpdated{workspace_id: 10, track_id: 42}
+      assert_receive %ConsoleChanged{workspace_id: 10, track_id: 42}
     end
   end
 
   describe "execute/2 - :broadcast_chat_state" do
-    test "broadcasts ChatStateUpdated event" do
+    test "broadcasts ChatChanged event" do
       state = make_state(track_id: 42, workspace_id: 10)
       Events.subscribe_to_workspace(10)
 
       new_state = Action.execute(:broadcast_chat_state, state)
 
       assert new_state == state
-      assert_receive %ChatStateUpdated{workspace_id: 10, track_id: 42}
+      assert_receive %ChatChanged{workspace_id: 10, track_id: 42}
     end
   end
 

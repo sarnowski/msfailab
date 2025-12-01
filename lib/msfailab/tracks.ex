@@ -46,8 +46,7 @@ defmodule Msfailab.Tracks do
   alias Msfailab.Containers
   alias Msfailab.Containers.ContainerRecord
   alias Msfailab.Events
-  alias Msfailab.Events.TrackCreated
-  alias Msfailab.Events.TrackUpdated
+  alias Msfailab.Events.WorkspaceChanged
   alias Msfailab.Repo
   alias Msfailab.Tracks.ChatContext
   alias Msfailab.Tracks.ChatState
@@ -234,7 +233,7 @@ defmodule Msfailab.Tracks do
       container_with_workspace = Repo.preload(container, :workspace)
       track_with_context = %{track | container: container_with_workspace}
 
-      Events.broadcast(TrackCreated.new(track_with_context))
+      Events.broadcast(WorkspaceChanged.new(container_with_workspace.workspace_id))
       maybe_start_container(track_with_context)
       maybe_start_track_server(track_with_context)
       {:ok, track}
@@ -250,7 +249,7 @@ defmodule Msfailab.Tracks do
       # Preload container and workspace for events and startup
       track_with_context = Repo.preload(track, container: :workspace)
 
-      Events.broadcast(TrackCreated.new(track_with_context))
+      Events.broadcast(WorkspaceChanged.new(track_with_context.container.workspace_id))
       maybe_start_container(track_with_context)
       maybe_start_track_server(track_with_context)
       {:ok, track}
@@ -265,7 +264,7 @@ defmodule Msfailab.Tracks do
     with {:ok, updated_track} <- track |> Track.update_changeset(attrs) |> Repo.update() do
       # Preload container with workspace for event
       track_with_context = Repo.preload(updated_track, container: :workspace)
-      Events.broadcast(TrackUpdated.new(track_with_context))
+      Events.broadcast(WorkspaceChanged.new(track_with_context.container.workspace_id))
       {:ok, updated_track}
     end
   end
@@ -282,7 +281,7 @@ defmodule Msfailab.Tracks do
     with {:ok, archived_track} <- track |> Track.archive_changeset() |> Repo.update() do
       # Preload container with workspace for event
       track_with_context = Repo.preload(archived_track, container: :workspace)
-      Events.broadcast(TrackUpdated.new(track_with_context))
+      Events.broadcast(WorkspaceChanged.new(track_with_context.container.workspace_id))
 
       # Stop the TrackServer for this track (which unregisters the console)
       stop_track_server(archived_track.id)

@@ -84,7 +84,8 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
           | {:update_tool_status, integer(), String.t(), keyword()}
           | {:update_turn_status, String.t(), String.t()}
           | {:start_llm, ChatRequest.t()}
-          | {:send_command, String.t()}
+          | {:send_msf_command, String.t()}
+          | {:send_bash_command, integer(), String.t()}
           | :broadcast_chat_state
           | :reconcile
 
@@ -124,6 +125,9 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
 
       should_execute_next_sequential_tool?(turn, console) ->
         execute_next_sequential_tool(turn, console, entries, context)
+
+      should_execute_parallel_tools?(turn) ->
+        execute_all_parallel_tools(turn, entries)
 
       should_start_next_llm_request?(turn) ->
         start_llm_request(turn, entries, context)
@@ -195,6 +199,17 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
   defp has_approved_sequential_tool?(turn) do
     Enum.any?(turn.tool_invocations, fn {_id, ts} ->
       ts.status == :approved and sequential_tool?(ts.tool_name)
+    end)
+  end
+
+  defp should_execute_parallel_tools?(turn) do
+    turn.status in [:pending_approval, :executing_tools] and
+      has_approved_parallel_tool?(turn)
+  end
+
+  defp has_approved_parallel_tool?(turn) do
+    Enum.any?(turn.tool_invocations, fn {_id, ts} ->
+      ts.status == :approved and not sequential_tool?(ts.tool_name)
     end)
   end
 
@@ -320,8 +335,7 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
         tc.name,
         tc.arguments,
         initial_status,
-        console_prompt,
-        DateTime.utc_now()
+        console_prompt: console_prompt
       )
 
     # Tool state for tracking
@@ -573,7 +587,32 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
 
         actions = [
           {:update_tool_status, entry_id, "executing", []},
-          {:send_command, command},
+          {:send_msf_command, command},
+          :broadcast_chat_state
+        ]
+
+        {new_turn, new_entries, actions}
+
+      %{tool_name: "bash_command", arguments: args} = tool_state ->
+        command = Map.get(args, "command", "")
+
+        new_tool_state = %{
+          tool_state
+          | status: :executing,
+            started_at: DateTime.utc_now()
+        }
+
+        new_turn = %TurnState{
+          turn
+          | status: :executing_tools,
+            tool_invocations: Map.put(turn.tool_invocations, entry_id, new_tool_state)
+        }
+
+        new_entries = update_chat_entry_status(entries, entry_id, :executing)
+
+        actions = [
+          {:update_tool_status, entry_id, "executing", []},
+          {:send_bash_command, entry_id, command},
           :broadcast_chat_state
         ]
 
@@ -642,7 +681,8 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
             command_to_tool: Map.delete(turn.command_to_tool, tool_state.command_id || "")
         }
 
-        new_entries = update_chat_entry_status(entries, entry_id, :success)
+        new_entries =
+          update_chat_entry_status(entries, entry_id, :success, result_content: output)
 
         actions = [
           {:update_tool_status, entry_id, "success",
@@ -708,6 +748,122 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
   end
 
   # ============================================================================
+  # Bash Tool Completion
+  # ============================================================================
+
+  @doc """
+  Completes a bash tool execution by command_id.
+
+  Unlike MSF commands which complete on console ready, bash commands complete
+  via CommandResult events with explicit command_id matching.
+
+  ## Parameters
+
+  - `turn` - Current turn state
+  - `entries` - Current chat entries
+  - `command_id` - The command ID that completed
+  - `output` - The command output
+
+  ## Returns
+
+  `{new_turn, new_entries, actions}` or `:no_executing_tool` if no tool was executing
+  """
+  @spec complete_bash_tool(TurnState.t(), [ChatEntry.t()], String.t(), String.t()) ::
+          {TurnState.t(), [ChatEntry.t()], [action()]} | :no_executing_tool
+  def complete_bash_tool(%TurnState{} = turn, entries, command_id, output) do
+    case find_tool_by_command_id(turn, command_id) do
+      nil ->
+        :no_executing_tool
+
+      {entry_id, tool_state} ->
+        duration = DateTime.diff(DateTime.utc_now(), tool_state.started_at, :millisecond)
+
+        Logger.info(
+          "Bash tool execution complete (#{duration}ms, #{String.length(output)} bytes)"
+        )
+
+        new_tool_state = %{tool_state | status: :success}
+
+        new_turn = %TurnState{
+          turn
+          | tool_invocations: Map.put(turn.tool_invocations, entry_id, new_tool_state),
+            command_to_tool: Map.delete(turn.command_to_tool, command_id)
+        }
+
+        new_entries =
+          update_chat_entry_status(entries, entry_id, :success, result_content: output)
+
+        actions = [
+          {:update_tool_status, entry_id, "success",
+           [result_content: output, duration_ms: duration]},
+          :reconcile,
+          :broadcast_chat_state
+        ]
+
+        {new_turn, new_entries, actions}
+    end
+  end
+
+  @doc """
+  Marks a bash tool as failed by command_id.
+
+  ## Parameters
+
+  - `turn` - Current turn state
+  - `entries` - Current chat entries
+  - `command_id` - The command ID that failed
+  - `error_message` - The error message
+
+  ## Returns
+
+  `{new_turn, new_entries, actions}` or `:no_executing_tool` if no tool was executing
+  """
+  @spec error_bash_tool(TurnState.t(), [ChatEntry.t()], String.t(), String.t()) ::
+          {TurnState.t(), [ChatEntry.t()], [action()]} | :no_executing_tool
+  def error_bash_tool(%TurnState{} = turn, entries, command_id, error_message) do
+    case find_tool_by_command_id(turn, command_id) do
+      nil ->
+        :no_executing_tool
+
+      {entry_id, tool_state} ->
+        duration =
+          if tool_state.started_at do
+            DateTime.diff(DateTime.utc_now(), tool_state.started_at, :millisecond)
+          else
+            0
+          end
+
+        Logger.warning("Bash tool execution failed: #{error_message}")
+
+        new_tool_state = %{tool_state | status: :error}
+
+        new_turn = %TurnState{
+          turn
+          | tool_invocations: Map.put(turn.tool_invocations, entry_id, new_tool_state),
+            command_to_tool: Map.delete(turn.command_to_tool, command_id)
+        }
+
+        new_entries = update_chat_entry_status(entries, entry_id, :error)
+
+        actions = [
+          {:update_tool_status, entry_id, "error",
+           [error_message: error_message, duration_ms: duration]},
+          :reconcile,
+          :broadcast_chat_state
+        ]
+
+        {new_turn, new_entries, actions}
+    end
+  end
+
+  defp find_tool_by_command_id(turn, command_id) do
+    case Map.get(turn.command_to_tool, command_id) do
+      nil -> nil
+      entry_id -> {entry_id, Map.get(turn.tool_invocations, entry_id)}
+    end
+  end
+
+  # ============================================================================
   # Private Helpers
   # ============================================================================
 
@@ -726,6 +882,34 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
 
       [] ->
         :no_action
+    end
+  end
+
+  defp execute_all_parallel_tools(%TurnState{} = turn, entries) do
+    # Find all approved parallel tools, sorted by position
+    approved_parallel =
+      turn.tool_invocations
+      |> Enum.filter(fn {_id, ts} ->
+        ts.status == :approved and not sequential_tool?(ts.tool_name)
+      end)
+      |> Enum.sort_by(fn {id, _ts} -> get_entry_position(entries, id) end)
+
+    case approved_parallel do
+      [] ->
+        :no_action
+
+      tools ->
+        # Execute all parallel tools in one batch
+        {final_turn, final_entries, all_actions} =
+          Enum.reduce(tools, {turn, entries, []}, fn {entry_id, _},
+                                                     {acc_turn, acc_entries, acc_actions} ->
+            {new_turn, new_entries, actions} =
+              start_tool_execution(acc_turn, acc_entries, entry_id)
+
+            {new_turn, new_entries, acc_actions ++ actions}
+          end)
+
+        {final_turn, final_entries, all_actions}
     end
   end
 
@@ -797,15 +981,25 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
     }
   end
 
-  defp update_chat_entry_status(entries, entry_id, new_status) do
+  defp update_chat_entry_status(entries, entry_id, new_status, opts \\ []) do
     Enum.map(entries, fn entry ->
-      if (entry.id == entry_id or entry.position == entry_id) and
-           ChatEntry.tool_invocation?(entry) do
-        %{entry | tool_status: new_status}
-      else
-        entry
-      end
+      if matches_tool_entry?(entry, entry_id),
+        do: apply_tool_update(entry, new_status, opts),
+        else: entry
     end)
+  end
+
+  defp matches_tool_entry?(entry, entry_id) do
+    (entry.id == entry_id or entry.position == entry_id) and ChatEntry.tool_invocation?(entry)
+  end
+
+  defp apply_tool_update(entry, new_status, opts) do
+    entry = %{entry | tool_status: new_status}
+
+    case Keyword.get(opts, :result_content) do
+      nil -> entry
+      content -> %{entry | result_content: content}
+    end
   end
 
   defp find_executing_tool(turn, _command_id) do

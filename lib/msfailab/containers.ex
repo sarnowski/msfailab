@@ -288,7 +288,7 @@ defmodule Msfailab.Containers do
   alias Msfailab.Containers.DockerAdapter
   alias Msfailab.Containers.Msgrpc.Console
   alias Msfailab.Events
-  alias Msfailab.Events.ContainerCreated
+  alias Msfailab.Events.WorkspaceChanged
   alias Msfailab.Repo
   alias Msfailab.Workspaces.Workspace
 
@@ -456,7 +456,7 @@ defmodule Msfailab.Containers do
       |> ContainerRecord.create_changeset(attrs)
 
     with {:ok, container} <- Repo.insert(changeset) do
-      Events.broadcast(ContainerCreated.new(container))
+      Events.broadcast(WorkspaceChanged.new(container.workspace_id))
       {:ok, container}
     end
   end
@@ -467,7 +467,7 @@ defmodule Msfailab.Containers do
       |> ContainerRecord.create_changeset(attrs)
 
     with {:ok, container} <- Repo.insert(changeset) do
-      Events.broadcast(ContainerCreated.new(container))
+      Events.broadcast(WorkspaceChanged.new(container.workspace_id))
       {:ok, container}
     end
   end

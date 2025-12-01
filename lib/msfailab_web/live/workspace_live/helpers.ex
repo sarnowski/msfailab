@@ -50,61 +50,6 @@ defmodule MsfailabWeb.WorkspaceLive.Helpers do
   def page_title(workspace, track), do: "#{track.name} - #{workspace.name}"
 
   # ===========================================================================
-  # Track List Updates
-  # ===========================================================================
-
-  @doc """
-  Updates a list of tracks based on a TrackUpdated event.
-
-  If the event has `archived_at` set, removes the track from the list.
-  Otherwise, updates the track's name and slug.
-
-  ## Examples
-
-      iex> tracks = [%{id: 1, name: "Old Name", slug: "old-slug"}]
-      iex> event = %{track_id: 1, name: "New Name", slug: "new-slug", archived_at: nil}
-      iex> Helpers.update_tracks_list(tracks, event)
-      [%{id: 1, name: "New Name", slug: "new-slug"}]
-
-      iex> tracks = [%{id: 1, name: "Track", slug: "track"}]
-      iex> event = %{track_id: 1, archived_at: ~U[2024-01-01 00:00:00Z]}
-      iex> Helpers.update_tracks_list(tracks, event)
-      []
-  """
-  @spec update_tracks_list([map()], map()) :: [map()]
-  def update_tracks_list(tracks, event) do
-    if event.archived_at do
-      Enum.reject(tracks, &(&1.id == event.track_id))
-    else
-      Enum.map(tracks, &maybe_update_track(&1, event))
-    end
-  end
-
-  @doc """
-  Updates a single track if it matches the event's track_id.
-
-  ## Examples
-
-      iex> track = %{id: 1, name: "Old", slug: "old"}
-      iex> event = %{track_id: 1, name: "New", slug: "new"}
-      iex> Helpers.maybe_update_track(track, event)
-      %{id: 1, name: "New", slug: "new"}
-
-      iex> track = %{id: 2, name: "Other", slug: "other"}
-      iex> event = %{track_id: 1, name: "New", slug: "new"}
-      iex> Helpers.maybe_update_track(track, event)
-      %{id: 2, name: "Other", slug: "other"}
-  """
-  @spec maybe_update_track(map(), map()) :: map()
-  def maybe_update_track(track, event) do
-    if track.id == event.track_id do
-      %{track | name: event.name, slug: event.slug}
-    else
-      track
-    end
-  end
-
-  # ===========================================================================
   # Console History Rendering
   # ===========================================================================
 

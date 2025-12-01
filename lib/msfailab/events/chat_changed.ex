@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-defmodule Msfailab.Events.ChatStateUpdated do
+defmodule Msfailab.Events.ChatChanged do
   @moduledoc """
   Event broadcast when a track's chat state changes.
 
@@ -22,10 +22,6 @@ defmodule Msfailab.Events.ChatStateUpdated do
   the track's chat state has changed. Subscribers should query the
   TrackServer for the current state rather than expecting full state in
   the event payload.
-
-  This follows the same pattern as `TrackStateUpdated` for console state:
-  the event is just a notification, and the UI fetches complete state from
-  `Tracks.get_chat_state/1` when it receives the event.
 
   ## Design Rationale
 
@@ -46,7 +42,7 @@ defmodule Msfailab.Events.ChatStateUpdated do
 
   ## Example
 
-      def handle_info(%ChatStateUpdated{track_id: track_id}, socket) do
+      def handle_info(%ChatChanged{track_id: track_id}, socket) do
         if socket.assigns.current_track?.id == track_id do
           {:ok, chat_state} = Tracks.get_chat_state(track_id)
           {:noreply, assign(socket, :chat_state, chat_state)}
@@ -66,7 +62,7 @@ defmodule Msfailab.Events.ChatStateUpdated do
   defstruct [:workspace_id, :track_id, :timestamp]
 
   @doc """
-  Creates a new ChatStateUpdated event.
+  Creates a new ChatChanged event.
 
   ## Parameters
 

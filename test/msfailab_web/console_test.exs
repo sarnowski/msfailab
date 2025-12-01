@@ -29,24 +29,25 @@ defmodule MsfailabWeb.ConsoleTest do
                Console.to_html("<script>alert(1)</script>")
     end
 
-    test "colorizes [*] status lines as info (cyan)" do
+    test "colorizes only [*] marker as info, not entire line" do
       {:safe, html} = Console.to_html("[*] Starting scan")
-      assert html =~ ~s(<span class="text-info">[*] Starting scan</span>)
+      # Only the marker is colored, rest of line is plain escaped text
+      assert html == ~s(<span class="text-info">[*]</span> Starting scan)
     end
 
-    test "colorizes [+] success lines as success (green)" do
+    test "colorizes only [+] marker as success, not entire line" do
       {:safe, html} = Console.to_html("[+] Exploit succeeded")
-      assert html =~ ~s(<span class="text-success">[+] Exploit succeeded</span>)
+      assert html == ~s(<span class="text-success">[+]</span> Exploit succeeded)
     end
 
-    test "colorizes [-] error lines as error (red)" do
+    test "colorizes only [-] marker as error, not entire line" do
       {:safe, html} = Console.to_html("[-] Connection failed")
-      assert html =~ ~s(<span class="text-error">[-] Connection failed</span>)
+      assert html == ~s(<span class="text-error">[-]</span> Connection failed)
     end
 
-    test "colorizes [!] warning lines as warning (yellow)" do
+    test "colorizes only [!] marker as warning, not entire line" do
       {:safe, html} = Console.to_html("[!] Deprecated option")
-      assert html =~ ~s(<span class="text-warning">[!] Deprecated option</span>)
+      assert html == ~s(<span class="text-warning">[!]</span> Deprecated option)
     end
 
     test "handles multiline output with mixed symbols" do
@@ -54,17 +55,18 @@ defmodule MsfailabWeb.ConsoleTest do
 
       {:safe, html} = Console.to_html(input)
 
-      assert html =~ ~s(<span class="text-info">[*] Starting module</span>)
-      assert html =~ ~s(<span class="text-success">[+] Success</span>)
-      assert html =~ ~s(<span class="text-error">[-] Error occurred</span>)
-      assert html =~ ~s(<span class="text-warning">[!] Warning</span>)
+      # Each line should have only its marker colored
+      assert html =~ ~s(<span class="text-info">[*]</span> Starting module)
+      assert html =~ ~s(<span class="text-success">[+]</span> Success)
+      assert html =~ ~s(<span class="text-error">[-]</span> Error occurred)
+      assert html =~ ~s(<span class="text-warning">[!]</span> Warning)
       assert html =~ "Plain text"
     end
 
     test "escapes HTML within colorized lines" do
       {:safe, html} = Console.to_html("[+] Got <shell> access")
       assert html =~ "&lt;shell&gt;"
-      assert html =~ ~s(<span class="text-success">)
+      assert html =~ ~s(<span class="text-success">[+]</span>)
     end
 
     test "handles empty string" do

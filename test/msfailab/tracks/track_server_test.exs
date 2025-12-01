@@ -19,8 +19,8 @@ defmodule Msfailab.Tracks.TrackServerTest do
 
   alias Msfailab.Containers
   alias Msfailab.Events
+  alias Msfailab.Events.ConsoleChanged
   alias Msfailab.Events.ConsoleUpdated
-  alias Msfailab.Events.TrackStateUpdated
   alias Msfailab.Tracks
   alias Msfailab.Tracks.TrackServer
 
@@ -196,8 +196,8 @@ defmodule Msfailab.Tracks.TrackServerTest do
     end
   end
 
-  describe "TrackStateUpdated broadcasting" do
-    test "broadcasts TrackStateUpdated on ConsoleUpdated" do
+  describe "ConsoleChanged broadcasting" do
+    test "broadcasts ConsoleChanged on ConsoleUpdated" do
       Events.subscribe_to_workspace(1)
 
       _pid =
@@ -207,7 +207,7 @@ defmodule Msfailab.Tracks.TrackServerTest do
       Events.broadcast(event)
 
       assert_receive %ConsoleUpdated{track_id: 400}
-      assert_receive %TrackStateUpdated{track_id: 400, workspace_id: 1}
+      assert_receive %ConsoleChanged{track_id: 400, workspace_id: 1}
     end
   end
 

@@ -126,4 +126,4 @@ jobs:
 
       # Publish docker-compose.yml as OCI artifact
       - name: Publish compose file
-        run: docker compose -f docker-compose.release.yml publish -y ${{ env.REGISTRY }}/${{ github.repository }}:latest
+        run: docker compose -f docker-compose.release.yml publish --yes ${{ env.REGISTRY }}/${{ github.repository }}:latest

@@ -47,8 +47,8 @@ defmodule Msfailab.Tracks.TrackServer.Action do
 
   alias Msfailab.Containers
   alias Msfailab.Events
-  alias Msfailab.Events.ChatStateUpdated
-  alias Msfailab.Events.TrackStateUpdated
+  alias Msfailab.Events.ChatChanged
+  alias Msfailab.Events.ConsoleChanged
   alias Msfailab.LLM
   alias Msfailab.Tracks
   alias Msfailab.Tracks.ChatContext
@@ -216,13 +216,13 @@ defmodule Msfailab.Tracks.TrackServer.Action do
   # ---------------------------------------------------------------------------
 
   def execute(:broadcast_track_state, state) do
-    event = TrackStateUpdated.new(state.workspace_id, state.track_id)
+    event = ConsoleChanged.new(state.workspace_id, state.track_id)
     Events.broadcast(event)
     state
   end
 
   def execute(:broadcast_chat_state, state) do
-    event = ChatStateUpdated.new(state.workspace_id, state.track_id)
+    event = ChatChanged.new(state.workspace_id, state.track_id)
     Events.broadcast(event)
     state
   end

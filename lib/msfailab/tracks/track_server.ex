@@ -72,6 +72,7 @@ defmodule Msfailab.Tracks.TrackServer do
 
   alias Msfailab.Containers
   alias Msfailab.Events
+  alias Msfailab.Events.CommandResult
   alias Msfailab.Events.ConsoleUpdated
   alias Msfailab.LLM
   alias Msfailab.LLM.Events, as: LLMEvents
@@ -485,6 +486,69 @@ defmodule Msfailab.Tracks.TrackServer do
   # coveralls-ignore-stop
 
   # ---------------------------------------------------------------------------
+  # Bash Command Result Events
+  # ---------------------------------------------------------------------------
+
+  # coveralls-ignore-start
+  # Reason: Bash command integration requiring real container process.
+  # Core bash tool logic tested in Turn module.
+
+  def handle_info(
+        %CommandResult{track_id: track_id, type: :bash, status: :finished} = event,
+        %State{track_id: track_id} = state
+      ) do
+    Logger.debug("Bash command finished",
+      command_id: event.command_id,
+      output_bytes: String.length(event.output)
+    )
+
+    case Turn.complete_bash_tool(state.turn, state.chat_entries, event.command_id, event.output) do
+      :no_executing_tool ->
+        {:noreply, state}
+
+      {new_turn, new_entries, actions} ->
+        new_state = %{state | turn: new_turn, chat_entries: new_entries}
+        final_state = execute_actions(new_state, actions)
+        {:noreply, final_state}
+    end
+  end
+
+  def handle_info(
+        %CommandResult{track_id: track_id, type: :bash, status: :error} = event,
+        %State{track_id: track_id} = state
+      ) do
+    Logger.warning("Bash command error",
+      command_id: event.command_id,
+      error: inspect(event.error)
+    )
+
+    error_message = inspect(event.error)
+
+    case Turn.error_bash_tool(state.turn, state.chat_entries, event.command_id, error_message) do
+      :no_executing_tool ->
+        {:noreply, state}
+
+      {new_turn, new_entries, actions} ->
+        new_state = %{state | turn: new_turn, chat_entries: new_entries}
+        final_state = execute_actions(new_state, actions)
+        {:noreply, final_state}
+    end
+  end
+
+  # Ignore running status updates (could update UI progress later)
+  def handle_info(
+        %CommandResult{track_id: track_id, type: :bash, status: :running},
+        %State{track_id: track_id} = state
+      ) do
+    {:noreply, state}
+  end
+
+  # Ignore CommandResult for other tracks or Metasploit commands
+  def handle_info(%CommandResult{}, state), do: {:noreply, state}
+
+  # coveralls-ignore-stop
+
+  # ---------------------------------------------------------------------------
   # Reconciliation Trigger
   # ---------------------------------------------------------------------------
 
@@ -696,44 +760,39 @@ defmodule Msfailab.Tracks.TrackServer do
   # coveralls-ignore-start
   # Reason: Container command integration requiring real container process.
   # Command execution tested via integration tests with mock container.
-  defp execute_action(state, {:send_command, command}) do
-    # Find the tool being executed
-    executing_tool =
-      Enum.find(state.turn.tool_invocations, fn {_id, ts} ->
-        ts.status == :executing and ts.command_id == nil
-      end)
+  defp execute_action(state, {:send_msf_command, command}) do
+    executing_tool = find_executing_msf_tool(state.turn)
 
     case Containers.send_metasploit_command(state.container_id, state.track_id, command) do
       {:ok, command_id} ->
-        Logger.info("Tool execution started: #{command}")
-
-        case executing_tool do
-          {entry_id, _} ->
-            new_turn = Turn.record_command_id(state.turn, entry_id, command_id)
-            %{state | turn: new_turn}
-
-          nil ->
-            state
-        end
+        Logger.info("MSF tool execution started: #{command}")
+        record_msf_command_id(state, executing_tool, command_id)
 
       {:error, :console_busy} ->
         Logger.debug("Console busy, will retry tool execution")
         state
 
       {:error, reason} ->
-        Logger.error("Tool execution failed immediately", reason: inspect(reason))
+        Logger.error("MSF tool execution failed immediately", reason: inspect(reason))
+        handle_msf_tool_error(state, executing_tool, reason)
+    end
+  end
 
-        case executing_tool do
-          {entry_id, _} ->
-            {new_turn, new_entries, actions} =
-              Turn.mark_tool_error(state.turn, state.chat_entries, entry_id, reason)
+  defp execute_action(state, {:send_bash_command, entry_id, command}) do
+    case Containers.send_bash_command(state.container_id, state.track_id, command) do
+      {:ok, command_id} ->
+        Logger.info("Bash tool execution started: #{command}")
+        new_turn = Turn.record_command_id(state.turn, entry_id, command_id)
+        %{state | turn: new_turn}
 
-            new_state = %{state | turn: new_turn, chat_entries: new_entries}
-            execute_actions(new_state, actions)
+      {:error, :container_not_running} ->
+        Logger.error("Container not running for bash command")
 
-          nil ->
-            state
-        end
+        {new_turn, new_entries, actions} =
+          Turn.mark_tool_error(state.turn, state.chat_entries, entry_id, :container_not_running)
+
+        new_state = %{state | turn: new_turn, chat_entries: new_entries}
+        execute_actions(new_state, actions)
     end
   end
 
@@ -744,6 +803,31 @@ defmodule Msfailab.Tracks.TrackServer do
   end
 
   # coveralls-ignore-start
+  # Reason: Container command integration helpers - only used from execute_action
+
+  defp find_executing_msf_tool(turn) do
+    Enum.find(turn.tool_invocations, fn {_id, ts} ->
+      ts.status == :executing and ts.command_id == nil and ts.tool_name == "msf_command"
+    end)
+  end
+
+  defp record_msf_command_id(state, {entry_id, _}, command_id) do
+    new_turn = Turn.record_command_id(state.turn, entry_id, command_id)
+    %{state | turn: new_turn}
+  end
+
+  defp record_msf_command_id(state, nil, _command_id), do: state
+
+  defp handle_msf_tool_error(state, {entry_id, _}, reason) do
+    {new_turn, new_entries, actions} =
+      Turn.mark_tool_error(state.turn, state.chat_entries, entry_id, reason)
+
+    new_state = %{state | turn: new_turn, chat_entries: new_entries}
+    execute_actions(new_state, actions)
+  end
+
+  defp handle_msf_tool_error(state, nil, _reason), do: state
+
   # Reason: Reconciliation requires pending tools in state from LLM streaming.
   # Core reconciliation logic tested in Turn module (94.5%).
 

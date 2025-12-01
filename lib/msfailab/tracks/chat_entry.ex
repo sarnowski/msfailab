@@ -160,7 +160,8 @@ defmodule Msfailab.Tracks.ChatEntry do
           tool_name: String.t() | nil,
           tool_arguments: map() | nil,
           tool_status: tool_status() | nil,
-          console_prompt: String.t() | nil
+          console_prompt: String.t() | nil,
+          result_content: String.t() | nil
         }
 
   @enforce_keys [:id, :position, :entry_type, :streaming, :timestamp]
@@ -183,7 +184,8 @@ defmodule Msfailab.Tracks.ChatEntry do
     :tool_name,
     :tool_arguments,
     :tool_status,
-    :console_prompt
+    :console_prompt,
+    :result_content
   ]
 
   # ===========================================================================
@@ -336,8 +338,12 @@ defmodule Msfailab.Tracks.ChatEntry do
   - `tool_name` - Name of the tool being invoked (e.g., "msf_command")
   - `arguments` - Map of arguments passed to the tool
   - `status` - Current status in the lifecycle (see module docs)
-  - `console_prompt` - Console prompt at time of creation (e.g., "msf6 > ")
-  - `timestamp` - Creation time
+
+  ## Options
+
+  - `:console_prompt` - Console prompt at time of creation (e.g., "msf6 > "), defaults to ""
+  - `:result_content` - Tool execution result (when completed), defaults to nil
+  - `:timestamp` - Creation time, defaults to `DateTime.utc_now()`
 
   ## Example
 
@@ -348,8 +354,8 @@ defmodule Msfailab.Tracks.ChatEntry do
       ...>   "msf_command",
       ...>   %{"command" => "search apache"},
       ...>   :pending,
-      ...>   "msf6 > ",
-      ...>   ~U[2025-01-15 10:30:00Z]
+      ...>   console_prompt: "msf6 > ",
+      ...>   timestamp: ~U[2025-01-15 10:30:00Z]
       ...> )
       iex> entry.entry_type
       :tool_invocation
@@ -367,19 +373,9 @@ defmodule Msfailab.Tracks.ChatEntry do
           String.t(),
           map(),
           tool_status(),
-          String.t(),
-          DateTime.t()
+          keyword()
         ) :: t()
-  def tool_invocation(
-        id,
-        position,
-        tool_call_id,
-        tool_name,
-        arguments,
-        status,
-        console_prompt \\ "",
-        timestamp \\ DateTime.utc_now()
-      ) do
+  def tool_invocation(id, position, tool_call_id, tool_name, arguments, status, opts \\ []) do
     %__MODULE__{
       id: id,
       position: position,
@@ -388,9 +384,10 @@ defmodule Msfailab.Tracks.ChatEntry do
       tool_name: tool_name,
       tool_arguments: arguments,
       tool_status: status,
-      console_prompt: console_prompt,
+      console_prompt: Keyword.get(opts, :console_prompt, ""),
+      result_content: Keyword.get(opts, :result_content),
       streaming: false,
-      timestamp: timestamp
+      timestamp: Keyword.get(opts, :timestamp, DateTime.utc_now())
     }
   end
 
@@ -453,6 +450,7 @@ defmodule Msfailab.Tracks.ChatEntry do
       tool_arguments: ti.arguments,
       tool_status: String.to_existing_atom(ti.status),
       console_prompt: ti.console_prompt || "",
+      result_content: ti.result_content,
       streaming: false,
       timestamp: entry.inserted_at
     }

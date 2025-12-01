@@ -117,7 +117,10 @@ config :logger, :default_formatter,
     :input_tokens,
     :output_tokens,
     :recoverable,
-    :chat_entries
+    :chat_entries,
+    # Bash command metadata
+    :command_id,
+    :output_bytes
   ]
 
 # Use Jason for JSON parsing in Phoenix

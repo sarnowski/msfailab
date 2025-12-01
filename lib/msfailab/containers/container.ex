@@ -366,16 +366,14 @@ defmodule Msfailab.Containers.Container do
 
   alias Msfailab.Containers.Command
   alias Msfailab.Containers.Container.Core
-  alias Msfailab.Containers.ContainerRecord
   alias Msfailab.Containers.DockerAdapter
   alias Msfailab.Containers.Msgrpc.Console
   alias Msfailab.Events
-  alias Msfailab.Trace
-
   alias Msfailab.Events.CommandIssued
   alias Msfailab.Events.CommandResult
   alias Msfailab.Events.ConsoleUpdated
-  alias Msfailab.Events.ContainerUpdated
+  alias Msfailab.Events.WorkspaceChanged
+  alias Msfailab.Trace
 
   # Configuration accessors for timing values (allows test overrides)
   defp health_check_interval_ms,
@@ -1303,20 +1301,7 @@ defmodule Msfailab.Containers.Container do
   # ===========================================================================
 
   defp broadcast_container_status(state) do
-    container = %ContainerRecord{
-      id: state.container_record_id,
-      workspace_id: state.workspace_id,
-      slug: state.container_slug,
-      name: state.container_name,
-      docker_image: state.docker_image
-    }
-
-    event =
-      ContainerUpdated.new(container, state.status,
-        docker_container_id: state.docker_container_id
-      )
-
-    Events.broadcast(event)
+    Events.broadcast(WorkspaceChanged.new(state.workspace_id))
   end
 
   defp broadcast_console_offline(state, track_id) do

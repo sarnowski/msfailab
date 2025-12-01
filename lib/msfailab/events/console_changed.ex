@@ -14,32 +14,43 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-defmodule Msfailab.Events.TrackStateUpdated do
+defmodule Msfailab.Events.ConsoleChanged do
   @moduledoc """
-  Event broadcast when a track's runtime state changes.
+  Event broadcast when a track's console state changes.
 
   This is a lightweight notification event that signals to subscribers that
-  the track's session state has changed. Subscribers should query the
+  the track's console state has changed. Subscribers should query the
   TrackServer for the current state rather than expecting full state in
   the event payload.
 
-  This is a **State Event** (see Events module documentation), meaning it
-  represents changes to runtime session state within an entity, not changes
-  to the entity itself.
+  ## Design Rationale
+
+  Rather than including console data in the event payload, we use a simple
+  notification. This:
+
+  - Keeps event size minimal
+  - Ensures UI always gets consistent, complete state
+  - Simplifies LiveView logic (no delta accumulation)
+  - Handles missed events gracefully
 
   ## Usage
 
   When a LiveView receives this event, it should:
   1. Check if the track_id matches the currently displayed track
-  2. Query `Tracks.get_command_history/1` for the updated state
+  2. Query `Tracks.get_console_state/1` for the full state
   3. Re-render the terminal pane with the new state
 
   ## Example
 
-      def handle_info(%TrackStateUpdated{track_id: track_id}, socket) do
-        if track_id == socket.assigns.track.id do
-          commands = Tracks.get_command_history(track_id)
-          {:noreply, assign(socket, :commands, commands)}
+      def handle_info(%ConsoleChanged{track_id: track_id}, socket) do
+        if socket.assigns.current_track?.id == track_id do
+          {status, prompt, segments} = Tracks.get_console_state(track_id)
+          socket =
+            socket
+            |> assign(:console_status, status)
+            |> assign(:current_prompt, prompt)
+            |> assign(:console_segments, segments)
+          {:noreply, socket}
         else
           {:noreply, socket}
         end
@@ -47,8 +58,8 @@ defmodule Msfailab.Events.TrackStateUpdated do
   """
 
   @type t :: %__MODULE__{
-          workspace_id: integer(),
-          track_id: integer(),
+          workspace_id: pos_integer(),
+          track_id: pos_integer(),
           timestamp: DateTime.t()
         }
 
@@ -56,14 +67,14 @@ defmodule Msfailab.Events.TrackStateUpdated do
   defstruct [:workspace_id, :track_id, :timestamp]
 
   @doc """
-  Creates a new TrackStateUpdated event.
+  Creates a new ConsoleChanged event.
 
   ## Parameters
 
   - `workspace_id` - The workspace containing the track
-  - `track_id` - The track whose state changed
+  - `track_id` - The track whose console state changed
   """
-  @spec new(integer(), integer()) :: t()
+  @spec new(pos_integer(), pos_integer()) :: t()
   def new(workspace_id, track_id) when is_integer(workspace_id) and is_integer(track_id) do
     %__MODULE__{
       workspace_id: workspace_id,

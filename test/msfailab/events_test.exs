@@ -18,14 +18,19 @@ defmodule Msfailab.EventsTest do
   use ExUnit.Case, async: true
 
   alias Msfailab.Events
+  alias Msfailab.Events.ChatChanged
   alias Msfailab.Events.CommandIssued
   alias Msfailab.Events.CommandResult
+  alias Msfailab.Events.ConsoleChanged
   alias Msfailab.Events.ConsoleUpdated
-  alias Msfailab.Events.ContainerCreated
-  alias Msfailab.Events.ContainerUpdated
-  alias Msfailab.Events.TrackCreated
-  alias Msfailab.Events.TrackStateUpdated
-  alias Msfailab.Events.TrackUpdated
+  alias Msfailab.Events.WorkspaceChanged
+  alias Msfailab.Events.WorkspacesChanged
+
+  describe "application_topic/0" do
+    test "returns application topic string" do
+      assert Events.application_topic() == "application"
+    end
+  end
 
   describe "workspace_topic/1" do
     test "generates topic string from workspace id" do
@@ -35,16 +40,41 @@ defmodule Msfailab.EventsTest do
     end
   end
 
+  describe "subscribe_to_application/0" do
+    test "subscribes current process to application topic" do
+      assert :ok = Events.subscribe_to_application()
+
+      # Verify subscription by broadcasting and receiving
+      event = WorkspacesChanged.new()
+      Events.broadcast(event)
+
+      assert_receive %WorkspacesChanged{}
+    end
+  end
+
+  describe "unsubscribe_from_application/0" do
+    test "unsubscribes current process from application topic" do
+      Events.subscribe_to_application()
+      assert :ok = Events.unsubscribe_from_application()
+
+      # Verify unsubscription by broadcasting and NOT receiving
+      event = WorkspacesChanged.new()
+      Events.broadcast(event)
+
+      refute_receive %WorkspacesChanged{}, 50
+    end
+  end
+
   describe "subscribe_to_workspace/1" do
     test "subscribes current process to workspace topic" do
       workspace_id = unique_workspace_id()
       assert :ok = Events.subscribe_to_workspace(workspace_id)
 
       # Verify subscription by broadcasting and receiving
-      event = container_created_event(workspace_id)
+      event = WorkspaceChanged.new(workspace_id)
       Events.broadcast(event)
 
-      assert_receive %ContainerCreated{workspace_id: ^workspace_id}
+      assert_receive %WorkspaceChanged{workspace_id: ^workspace_id}
     end
   end
 
@@ -55,10 +85,10 @@ defmodule Msfailab.EventsTest do
       assert :ok = Events.unsubscribe_from_workspace(workspace_id)
 
       # Verify unsubscription by broadcasting and NOT receiving
-      event = container_created_event(workspace_id)
+      event = WorkspaceChanged.new(workspace_id)
       Events.broadcast(event)
 
-      refute_receive %ContainerCreated{}, 50
+      refute_receive %WorkspaceChanged{}, 50
     end
   end
 
@@ -66,56 +96,39 @@ defmodule Msfailab.EventsTest do
     setup do
       workspace_id = unique_workspace_id()
       Events.subscribe_to_workspace(workspace_id)
+      Events.subscribe_to_application()
       %{workspace_id: workspace_id}
     end
 
-    test "broadcasts ContainerCreated to workspace topic", %{workspace_id: workspace_id} do
-      event = container_created_event(workspace_id)
+    test "broadcasts WorkspacesChanged to application topic" do
+      event = WorkspacesChanged.new()
       assert :ok = Events.broadcast(event)
 
-      assert_receive %ContainerCreated{
-        workspace_id: ^workspace_id,
-        container_id: 1,
-        slug: "test-container"
-      }
+      assert_receive %WorkspacesChanged{}
     end
 
-    test "broadcasts ContainerUpdated to workspace topic", %{workspace_id: workspace_id} do
-      event = container_updated_event(workspace_id)
+    test "broadcasts WorkspaceChanged to workspace topic", %{workspace_id: workspace_id} do
+      event = WorkspaceChanged.new(workspace_id)
       assert :ok = Events.broadcast(event)
 
-      assert_receive %ContainerUpdated{
-        workspace_id: ^workspace_id,
-        status: :running
-      }
+      assert_receive %WorkspaceChanged{workspace_id: ^workspace_id}
     end
 
-    test "broadcasts TrackCreated to workspace topic", %{workspace_id: workspace_id} do
-      event = track_created_event(workspace_id)
+    test "broadcasts ConsoleChanged to workspace topic", %{workspace_id: workspace_id} do
+      event = ConsoleChanged.new(workspace_id, 10)
       assert :ok = Events.broadcast(event)
 
-      assert_receive %TrackCreated{
-        workspace_id: ^workspace_id,
-        track_id: 10,
-        slug: "test-track"
-      }
-    end
-
-    test "broadcasts TrackUpdated to workspace topic", %{workspace_id: workspace_id} do
-      event = track_updated_event(workspace_id)
-      assert :ok = Events.broadcast(event)
-
-      assert_receive %TrackUpdated{
+      assert_receive %ConsoleChanged{
         workspace_id: ^workspace_id,
         track_id: 10
       }
     end
 
-    test "broadcasts TrackStateUpdated to workspace topic", %{workspace_id: workspace_id} do
-      event = TrackStateUpdated.new(workspace_id, 10)
+    test "broadcasts ChatChanged to workspace topic", %{workspace_id: workspace_id} do
+      event = ChatChanged.new(workspace_id, 10)
       assert :ok = Events.broadcast(event)
 
-      assert_receive %TrackStateUpdated{
+      assert_receive %ChatChanged{
         workspace_id: ^workspace_id,
         track_id: 10
       }
@@ -162,37 +175,32 @@ defmodule Msfailab.EventsTest do
     setup do
       workspace_id = unique_workspace_id()
       Events.subscribe_to_workspace(workspace_id)
+      Events.subscribe_to_application()
       %{workspace_id: workspace_id}
     end
 
-    test "broadcasts ContainerCreated locally", %{workspace_id: workspace_id} do
-      event = container_created_event(workspace_id)
+    test "broadcasts WorkspacesChanged locally" do
+      event = WorkspacesChanged.new()
       assert :ok = Events.broadcast_local(event)
-      assert_receive %ContainerCreated{workspace_id: ^workspace_id}
+      assert_receive %WorkspacesChanged{}
     end
 
-    test "broadcasts ContainerUpdated locally", %{workspace_id: workspace_id} do
-      event = container_updated_event(workspace_id)
+    test "broadcasts WorkspaceChanged locally", %{workspace_id: workspace_id} do
+      event = WorkspaceChanged.new(workspace_id)
       assert :ok = Events.broadcast_local(event)
-      assert_receive %ContainerUpdated{workspace_id: ^workspace_id}
+      assert_receive %WorkspaceChanged{workspace_id: ^workspace_id}
     end
 
-    test "broadcasts TrackCreated locally", %{workspace_id: workspace_id} do
-      event = track_created_event(workspace_id)
+    test "broadcasts ConsoleChanged locally", %{workspace_id: workspace_id} do
+      event = ConsoleChanged.new(workspace_id, 10)
       assert :ok = Events.broadcast_local(event)
-      assert_receive %TrackCreated{workspace_id: ^workspace_id}
+      assert_receive %ConsoleChanged{workspace_id: ^workspace_id}
     end
 
-    test "broadcasts TrackUpdated locally", %{workspace_id: workspace_id} do
-      event = track_updated_event(workspace_id)
+    test "broadcasts ChatChanged locally", %{workspace_id: workspace_id} do
+      event = ChatChanged.new(workspace_id, 10)
       assert :ok = Events.broadcast_local(event)
-      assert_receive %TrackUpdated{workspace_id: ^workspace_id}
-    end
-
-    test "broadcasts TrackStateUpdated locally", %{workspace_id: workspace_id} do
-      event = TrackStateUpdated.new(workspace_id, 10)
-      assert :ok = Events.broadcast_local(event)
-      assert_receive %TrackStateUpdated{workspace_id: ^workspace_id}
+      assert_receive %ChatChanged{workspace_id: ^workspace_id}
     end
 
     test "broadcasts CommandIssued locally", %{workspace_id: workspace_id} do
@@ -216,6 +224,33 @@ defmodule Msfailab.EventsTest do
   end
 
   describe "event struct constructors" do
+    test "WorkspacesChanged.new/0 creates event" do
+      event = WorkspacesChanged.new()
+      assert %DateTime{} = event.timestamp
+    end
+
+    test "WorkspaceChanged.new/1 creates event" do
+      event = WorkspaceChanged.new(42)
+      assert event.workspace_id == 42
+      assert %DateTime{} = event.timestamp
+    end
+
+    test "ConsoleChanged.new/2 creates event" do
+      event = ConsoleChanged.new(1, 10)
+
+      assert event.workspace_id == 1
+      assert event.track_id == 10
+      assert %DateTime{} = event.timestamp
+    end
+
+    test "ChatChanged.new/2 creates event" do
+      event = ChatChanged.new(1, 10)
+
+      assert event.workspace_id == 1
+      assert event.track_id == 10
+      assert %DateTime{} = event.timestamp
+    end
+
     test "CommandResult.running/2 creates running result with default prompt" do
       issued = CommandIssued.new(1, 2, 10, "cmd-123", :metasploit, "db_status")
       result = CommandResult.running(issued, "Scanning...")
@@ -329,14 +364,6 @@ defmodule Msfailab.EventsTest do
       assert event.prompt == ""
     end
 
-    test "TrackStateUpdated.new/2 creates state updated event" do
-      event = TrackStateUpdated.new(1, 10)
-
-      assert event.workspace_id == 1
-      assert event.track_id == 10
-      assert %DateTime{} = event.timestamp
-    end
-
     test "CommandIssued.new/6 creates command issued event" do
       event = CommandIssued.new(1, 2, 10, "cmd-123", :bash, "whoami")
 
@@ -354,52 +381,5 @@ defmodule Msfailab.EventsTest do
 
   defp unique_workspace_id do
     System.unique_integer([:positive])
-  end
-
-  defp container_created_event(workspace_id) do
-    %ContainerCreated{
-      workspace_id: workspace_id,
-      container_id: 1,
-      slug: "test-container",
-      name: "Test Container",
-      docker_image: "metasploitframework/metasploit-framework",
-      timestamp: DateTime.utc_now()
-    }
-  end
-
-  defp container_updated_event(workspace_id) do
-    %ContainerUpdated{
-      workspace_id: workspace_id,
-      container_id: 1,
-      slug: "test-container",
-      name: "Test Container",
-      docker_image: "metasploitframework/metasploit-framework",
-      status: :running,
-      docker_container_id: "abc123",
-      timestamp: DateTime.utc_now()
-    }
-  end
-
-  defp track_created_event(workspace_id) do
-    %TrackCreated{
-      workspace_id: workspace_id,
-      container_id: 1,
-      track_id: 10,
-      slug: "test-track",
-      name: "Test Track",
-      timestamp: DateTime.utc_now()
-    }
-  end
-
-  defp track_updated_event(workspace_id) do
-    %TrackUpdated{
-      workspace_id: workspace_id,
-      container_id: 1,
-      track_id: 10,
-      slug: "test-track",
-      name: "Test Track",
-      archived_at: nil,
-      timestamp: DateTime.utc_now()
-    }
   end
 end
