@@ -1,0 +1,363 @@
+// If you want to use Phoenix channels, run `mix help phx.gen.channel`
+// to get started and then uncomment the line below.
+// import "./user_socket.js"
+
+// You can include dependencies in two ways.
+//
+// The simplest option is to put them in assets/vendor and
+// import them using relative paths:
+//
+//     import "../vendor/some-package.js"
+//
+// Alternatively, you can `npm install some-package --prefix assets` and import
+// them using a path starting with the package name:
+//
+//     import "some-package"
+//
+// If you have dependencies that try to import CSS, esbuild will generate a separate `app.css` file.
+// To load it, simply add a second `<link>` to your `root.html.heex` file.
+
+// Include phoenix_html to handle method=PUT/DELETE in forms and buttons.
+import "phoenix_html"
+// Establish Phoenix Socket and LiveView configuration.
+import {Socket} from "phoenix"
+import {LiveSocket} from "phoenix_live_view"
+import {hooks as colocatedHooks} from "phoenix-colocated/msfailab"
+import topbar from "../vendor/topbar"
+
+// Custom LiveView hooks
+const Hooks = {
+  AutoResizeTextarea: {
+    mounted() {
+      this.resize()
+      this.el.addEventListener("input", () => this.resize())
+      this.el.addEventListener("keydown", (e) => {
+        // Submit form on Enter (without Shift for new lines)
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault()
+          const form = this.el.closest("form")
+          if (form) {
+            form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }))
+          }
+        }
+        // Toggle input mode on Ctrl+M
+        if ((e.key === "m" || e.key === "M") && e.ctrlKey) {
+          e.preventDefault()
+          this.pushEvent("toggle_input_mode")
+        }
+      })
+    },
+    updated() {
+      this.resize()
+    },
+    resize() {
+      this.el.style.height = "auto"
+      this.el.style.height = Math.min(this.el.scrollHeight, 240) + "px"
+    }
+  },
+
+  StreamingCursor: {
+    mounted() {
+      this.cursor = this.createCursor()
+      this.insertCursorAtEnd()
+    },
+
+    updated() {
+      this.insertCursorAtEnd()
+    },
+
+    destroyed() {
+      if (this.cursor && this.cursor.parentNode) {
+        this.cursor.remove()
+      }
+    },
+
+    createCursor() {
+      const cursor = document.createElement("span")
+      cursor.className = "terminal-cursor"
+      return cursor
+    },
+
+    insertCursorAtEnd() {
+      // Find the last text node with actual content
+      const lastTextNode = this.findLastTextNode(this.el)
+
+      if (lastTextNode) {
+        const text = lastTextNode.textContent
+        const trimmedLength = text.trimEnd().length
+
+        if (trimmedLength < text.length && trimmedLength > 0) {
+          // Has trailing whitespace - split the node
+          // "code\n" becomes "code" + "\n", cursor goes between them
+          const whitespaceNode = lastTextNode.splitText(trimmedLength)
+          lastTextNode.parentNode.insertBefore(this.cursor, whitespaceNode)
+        } else {
+          // No trailing whitespace, insert after the text node
+          const parent = lastTextNode.parentNode
+          const nextSibling = lastTextNode.nextSibling
+
+          if (nextSibling) {
+            parent.insertBefore(this.cursor, nextSibling)
+          } else {
+            parent.appendChild(this.cursor)
+          }
+        }
+      } else {
+        // No text found, append to container
+        this.el.appendChild(this.cursor)
+      }
+    },
+
+    findLastTextNode(element) {
+      // Use TreeWalker to find all text nodes
+      const walker = document.createTreeWalker(
+        element,
+        NodeFilter.SHOW_TEXT,
+        {
+          acceptNode: (node) => {
+            // Skip whitespace-only nodes
+            if (node.textContent.trim() === "") {
+              return NodeFilter.FILTER_SKIP
+            }
+            return NodeFilter.FILTER_ACCEPT
+          }
+        }
+      )
+
+      let lastTextNode = null
+      while (walker.nextNode()) {
+        lastTextNode = walker.currentNode
+      }
+
+      return lastTextNode
+    }
+  },
+
+  ResizablePanes: {
+    mounted() {
+      const STORAGE_KEY = "msfailab:pane-width"
+      const MIN_PERCENT = 20
+      const MAX_PERCENT = 80
+      const DEFAULT_PERCENT = 50
+
+      // Helper functions (defined first so they can be used below)
+      const clamp = (percent) => Math.min(MAX_PERCENT, Math.max(MIN_PERCENT, percent))
+      const applyWidth = (percent) => {
+        this.el.style.setProperty("--left-pane-width", `${percent}%`)
+      }
+
+      // Find the divider element
+      this.divider = this.el.querySelector("[data-pane-divider]")
+      this.leftPane = this.el.querySelector("[data-pane-left]")
+      this.rightPane = this.el.querySelector("[data-pane-right]")
+
+      if (!this.divider || !this.leftPane || !this.rightPane) return
+
+      // Restore saved width or use default
+      const saved = localStorage.getItem(STORAGE_KEY)
+      const initialPercent = saved ? parseFloat(saved) : DEFAULT_PERCENT
+      applyWidth(clamp(initialPercent))
+
+      // Drag state
+      let isDragging = false
+
+      const onMouseDown = (e) => {
+        isDragging = true
+        e.preventDefault()
+        document.body.style.cursor = "col-resize"
+        document.body.style.userSelect = "none"
+      }
+
+      const onMouseMove = (e) => {
+        if (!isDragging) return
+
+        const rect = this.el.getBoundingClientRect()
+        const x = e.clientX - rect.left
+        const percent = (x / rect.width) * 100
+        applyWidth(clamp(percent))
+      }
+
+      const onMouseUp = () => {
+        if (!isDragging) return
+        isDragging = false
+        document.body.style.cursor = ""
+        document.body.style.userSelect = ""
+
+        // Persist to localStorage
+        const currentWidth = this.el.style.getPropertyValue("--left-pane-width")
+        if (currentWidth) {
+          localStorage.setItem(STORAGE_KEY, parseFloat(currentWidth))
+        }
+      }
+
+      // Touch support
+      const onTouchStart = (e) => {
+        isDragging = true
+        e.preventDefault()
+      }
+
+      const onTouchMove = (e) => {
+        if (!isDragging || !e.touches[0]) return
+
+        const rect = this.el.getBoundingClientRect()
+        const x = e.touches[0].clientX - rect.left
+        const percent = (x / rect.width) * 100
+        applyWidth(clamp(percent))
+      }
+
+      const onTouchEnd = () => {
+        if (!isDragging) return
+        isDragging = false
+
+        const currentWidth = this.el.style.getPropertyValue("--left-pane-width")
+        if (currentWidth) {
+          localStorage.setItem(STORAGE_KEY, parseFloat(currentWidth))
+        }
+      }
+
+      // Double-click to reset to 50/50
+      const onDoubleClick = () => {
+        applyWidth(DEFAULT_PERCENT)
+        localStorage.setItem(STORAGE_KEY, DEFAULT_PERCENT)
+      }
+
+      // Attach event listeners
+      this.divider.addEventListener("mousedown", onMouseDown)
+      this.divider.addEventListener("dblclick", onDoubleClick)
+      document.addEventListener("mousemove", onMouseMove)
+      document.addEventListener("mouseup", onMouseUp)
+
+      this.divider.addEventListener("touchstart", onTouchStart, { passive: false })
+      document.addEventListener("touchmove", onTouchMove)
+      document.addEventListener("touchend", onTouchEnd)
+
+      // Cleanup on destroy
+      this.cleanup = () => {
+        this.divider.removeEventListener("mousedown", onMouseDown)
+        this.divider.removeEventListener("dblclick", onDoubleClick)
+        document.removeEventListener("mousemove", onMouseMove)
+        document.removeEventListener("mouseup", onMouseUp)
+        this.divider.removeEventListener("touchstart", onTouchStart)
+        document.removeEventListener("touchmove", onTouchMove)
+        document.removeEventListener("touchend", onTouchEnd)
+      }
+    },
+
+    destroyed() {
+      if (this.cleanup) this.cleanup()
+    }
+  },
+
+  AutoScroll: {
+    mounted() {
+      this.isAtBottom = true
+      this.threshold = 20 // pixels from bottom to consider "at bottom"
+
+      // Find the scroll button in parent container
+      this.button = this.el.parentElement.querySelector("[data-scroll-button]")
+
+      // Scroll to bottom on mount
+      this.scrollToBottom()
+      this.updateButtonVisibility()
+
+      // Track scroll position
+      this.el.addEventListener("scroll", () => this.handleScroll())
+
+      // Handle button click
+      if (this.button) {
+        this.button.addEventListener("click", () => {
+          this.scrollToBottom()
+          this.isAtBottom = true
+          this.updateButtonVisibility()
+        })
+      }
+    },
+
+    updated() {
+      // Re-find button in case DOM was replaced
+      this.button = this.el.parentElement.querySelector("[data-scroll-button]")
+
+      // Auto-scroll on content update if at bottom
+      if (this.isAtBottom) {
+        this.scrollToBottom()
+      }
+
+      // Re-apply button visibility after DOM update
+      this.updateButtonVisibility()
+    },
+
+    handleScroll() {
+      const { scrollTop, scrollHeight, clientHeight } = this.el
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight
+      this.isAtBottom = distanceFromBottom <= this.threshold
+      this.updateButtonVisibility()
+    },
+
+    scrollToBottom() {
+      this.el.scrollTop = this.el.scrollHeight
+    },
+
+    updateButtonVisibility() {
+      if (this.button) {
+        this.button.classList.toggle("hidden", this.isAtBottom)
+      }
+    }
+  }
+}
+
+const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
+const liveSocket = new LiveSocket("/live", Socket, {
+  longPollFallbackMs: 2500,
+  params: {_csrf_token: csrfToken},
+  hooks: {...colocatedHooks, ...Hooks},
+})
+
+// Show progress bar on live navigation and form submits
+topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"})
+window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
+window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
+
+// connect if there are any LiveViews on the page
+liveSocket.connect()
+
+// expose liveSocket on window for web console debug logs and latency simulation:
+// >> liveSocket.enableDebug()
+// >> liveSocket.enableLatencySim(1000)  // enabled for duration of browser session
+// >> liveSocket.disableLatencySim()
+window.liveSocket = liveSocket
+
+// The lines below enable quality of life phoenix_live_reload
+// development features:
+//
+//     1. stream server logs to the browser console
+//     2. click on elements to jump to their definitions in your code editor
+//
+if (process.env.NODE_ENV === "development") {
+  window.addEventListener("phx:live_reload:attached", ({detail: reloader}) => {
+    // Enable server log streaming to client.
+    // Disable with reloader.disableServerLogs()
+    reloader.enableServerLogs()
+
+    // Open configured PLUG_EDITOR at file:line of the clicked element's HEEx component
+    //
+    //   * click with "c" key pressed to open at caller location
+    //   * click with "d" key pressed to open at function component definition location
+    let keyDown
+    window.addEventListener("keydown", e => keyDown = e.key)
+    window.addEventListener("keyup", _e => keyDown = null)
+    window.addEventListener("click", e => {
+      if(keyDown === "c"){
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        reloader.openEditorAtCaller(e.target)
+      } else if(keyDown === "d"){
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        reloader.openEditorAtDef(e.target)
+      }
+    }, true)
+
+    window.liveReloader = reloader
+  })
+}
+

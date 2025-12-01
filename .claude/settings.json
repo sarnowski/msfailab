@@ -1,0 +1,53 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(debugging-runtime)",
+      "Skill(finishing-work)",
+      "Skill(prompt-engineering)",
+      "Skill(writing-tests)",
+
+      "Bash(mix:*)",
+      "Bash(PRINT_LOGS=true mix:*)",
+      "Bash(MIX_ENV=dev mix:*)",
+      "Bash(MIX_ENV=test mix:*)",
+      "Bash(MIX_ENV=prod mix:*)",
+      "Bash(iex:*)",
+      "Bash(MIX_ENV=dev iex:*)",
+      "Bash(MIX_ENV=test iex:*)",
+      "Bash(MIX_ENV=prod iex:*)",
+      "Bash(npm:*)",
+
+      "Bash(psql:*)",
+      "Bash(pg_dump:*)",
+
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git show:*)",
+      "Bash(git status:*)",
+
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(cat:*)",
+      "Bash(sed:*)",
+      "Bash(test:*)",
+      "Bash(tree:*)",
+      "Bash(sort:*)",
+
+      "Bash(gemini -p:*)",
+
+      "WebSearch",
+      "WebFetch(domain:localhost)",
+      "WebFetch(domain:docs.rapid7.com)",
+      "WebFetch(domain:docs.metasploit.com)",
+      "WebFetch(domain:hexdocs.pm)",
+      "WebFetch(domain:hex.pm)",
+      "WebFetch(domain:www.anthropic.com)",
+      "WebFetch(domain:platform.claude.com)",
+      "WebFetch(domain:ollama.com)",
+      "WebFetch(domain:docs.ollama.com)",
+      "WebFetch(domain:daisyui.com)"
+    ]
+  },
+  "enabledMcpjsonServers": ["playwright"],
+  "includeCoAuthoredBy": false
+}
