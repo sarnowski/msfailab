@@ -229,7 +229,7 @@ defmodule Msfailab.LLM.Providers.Ollama do
     # Req passes {request, response} tuple as initial accumulator
     acc = init_accumulator(acc, request_body, url)
 
-    {events, new_state} = Core.process_chunk(data, acc)
+    {events, %Core.State{} = new_state} = Core.process_chunk(data, acc)
     send_events(events, caller, ref)
 
     %Core.State{new_state | req_resp: acc.req_resp, response_headers: acc.response_headers}

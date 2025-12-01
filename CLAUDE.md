@@ -8,11 +8,11 @@ msfailab is a collaborative security research platform that orchestrates Metaspl
 
 ## Mandatory Workflows
 
-### After Any Task That Modifies Code
+### After Any Task That Modifies Files
 
 **STOP before telling the user you're done. Invoke the `finishing-work` skill.**
 
-This is mandatory. The skill runs quality checks and records changes to PENDING.md. Without it:
+This applies to ANY file modification: Elixir code, configuration, CI/CD workflows, Docker files, documentation, etc. The skill runs quality checks and records changes to PENDING.md. Without it:
 - Commits will fail validation
 - Changes won't be properly documented
 - Quality issues slip through

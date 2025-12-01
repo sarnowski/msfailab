@@ -38,13 +38,13 @@ echo "MSFAILAB_OPENAI_API_KEY=sk-..." > .env
 # Or use Ollama: echo "MSFAILAB_OLLAMA_HOST=http://host.docker.internal:11434" > .env
 
 # Start msfailab
-docker compose -f oci://codeberg.org/sarnowski/msfailab:latest up
+docker compose -f oci://ghcr.io/sarnowski/msfailab:latest up
 ```
 
 ### Option 2: Build from Source
 
 ```bash
-git clone https://codeberg.org/sarnowski/msfailab.git
+git clone https://github.com/sarnowski/msfailab.git
 cd msfailab
 
 # Configure AI backend
@@ -58,7 +58,7 @@ docker compose up --build
 ### Option 3: Development Setup
 
 ```bash
-git clone https://codeberg.org/sarnowski/msfailab.git
+git clone https://github.com/sarnowski/msfailab.git
 cd msfailab
 
 # Start dependencies

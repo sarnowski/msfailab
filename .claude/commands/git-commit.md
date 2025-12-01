@@ -70,9 +70,6 @@ Create a commit message with:
 - Keep the Why, Approach, and Files sections
 - Separate entries with blank lines
 
-**Footer:**
-- End with the standard Claude Code attribution
-
 ### Step 5: Present for Approval
 
 Show the user:
@@ -166,10 +163,6 @@ new container.
 
 Files:
 - lib/msfailab/containers/container.ex
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 
 ## Important Notes

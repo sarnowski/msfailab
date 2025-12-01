@@ -1,13 +1,13 @@
 ---
 name: finishing-work
-description: "STOP. Did you modify code? Invoke this BEFORE telling user 'done'. Mandatory completion ritual: runs precommit checks + records changes to PENDING.md. Skipping = broken commits. Use when: task complete, user says 'done'/'commit'/'looks good', switching topics, or session ending."
+description: "STOP. Did you modify ANY files? Invoke this BEFORE telling user 'done'. Mandatory completion ritual: runs precommit checks + records changes to PENDING.md. Skipping = broken commits. Use when: task complete, user says 'done'/'commit'/'looks good', switching topics, or session ending."
 ---
 
 # Finishing Work
 
 **STOP. Before you tell the user the task is complete, invoke this skill.**
 
-This is the mandatory completion ritual for any work that modified code. It ensures quality checks pass AND changes are recorded for commit.
+This is the mandatory completion ritual for any work that modified files. It ensures quality checks pass AND changes are recorded for commit.
 
 ## When to Invoke
 
@@ -19,7 +19,9 @@ Invoke this skill when ANY of these are true:
 - Conversation is switching to a different topic
 - Session appears to be ending
 
-**If you modified .ex, .exs, .heex, or test files → you MUST invoke this skill.**
+**If you modified ANY files in the repository → you MUST invoke this skill.**
+
+This includes Elixir code (.ex, .exs, .heex), configuration (YAML, JSON, TOML), CI/CD workflows, Docker files, documentation, and anything else.
 
 ## The Completion Checklist
 
@@ -124,5 +126,5 @@ If you did two unrelated things, write two entries. Related changes (feature + i
 ## Quick Reference
 
 ```
-Modified code? → STOP → mix precommit → PENDING.md → respond to user
+Modified ANY files? → STOP → mix precommit → PENDING.md → respond to user
 ```
