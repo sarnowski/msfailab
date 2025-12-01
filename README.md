@@ -8,6 +8,8 @@ msfailab is a platform for security research teams that orchestrates multiple Me
 
 Your team and your AI agents work together on the same research tracks, share the same knowledge base, and build on each other's findings.
 
+![msfailab in action](msfailab-in-action.png)
+
 ## Core Capabilities
 
 ### Workspaces & Tracks
