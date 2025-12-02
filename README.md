@@ -2,6 +2,8 @@
 
 **Collaborative security research platform where humans and AI agents work side by side.**
 
+> **Early Development Notice:** This project is in early development and will undergo frequent, drastic changes. Feedback is very welcome! Due to the rapid pace of changes, I recommend submitting bug reports and feature requests rather than pull requests until the codebase stabilizes.
+
 ## What is msfailab?
 
 msfailab is a platform for security research teams that orchestrates multiple Metasploit Framework environments through a shared web interface. It treats AI agents as first-class research partners—giving them the same console access and workspace visibility as human researchers.

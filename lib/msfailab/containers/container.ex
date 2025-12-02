@@ -1157,6 +1157,14 @@ defmodule Msfailab.Containers.Container do
   end
 
   defp spawn_console(state, track_id) do
+    # Get current restart attempts from state (may be nil if first spawn)
+    current_attempts = get_in(state.consoles, [track_id, :restart_attempts]) || 0
+
+    Logger.debug("Attempting to spawn console",
+      track_id: track_id,
+      attempt: current_attempts + 1
+    )
+
     # Obtain fresh token for each console spawn
     case msgrpc_client().login(state.rpc_endpoint, msgrpc_password(), "msf") do
       {:ok, token} ->
@@ -1183,23 +1191,51 @@ defmodule Msfailab.Containers.Container do
             %{state | consoles: Map.put(state.consoles, track_id, console_info)}
 
           {:error, reason} ->
-            Logger.error("Failed to spawn console",
+            Logger.error("Failed to spawn console process",
               track_id: track_id,
+              attempt: current_attempts + 1,
               reason: inspect(reason)
             )
 
-            schedule_console_restart(track_id, 0)
-            state
+            handle_spawn_failure(state, track_id, current_attempts)
         end
 
       {:error, reason} ->
         Logger.error("Failed to authenticate for console",
           track_id: track_id,
+          attempt: current_attempts + 1,
           reason: inspect(reason)
         )
 
-        schedule_console_restart(track_id, 0)
-        state
+        handle_spawn_failure(state, track_id, current_attempts)
+    end
+  end
+
+  # Handle console spawn failure with proper retry tracking
+  defp handle_spawn_failure(state, track_id, current_attempts) do
+    new_attempts = current_attempts + 1
+
+    if new_attempts <= console_max_restart_attempts() do
+      schedule_console_restart(track_id, new_attempts)
+
+      # Update state to track restart attempts
+      updated_info = %{
+        pid: nil,
+        ref: nil,
+        restart_attempts: new_attempts,
+        last_restart_at: DateTime.utc_now()
+      }
+
+      %{state | consoles: Map.put(state.consoles, track_id, updated_info)}
+    else
+      Logger.error("Console spawn exceeded max attempts, giving up",
+        track_id: track_id,
+        attempts: new_attempts,
+        max_attempts: console_max_restart_attempts()
+      )
+
+      broadcast_console_offline(state, track_id)
+      %{state | consoles: Map.delete(state.consoles, track_id)}
     end
   end
 
@@ -1243,10 +1279,21 @@ defmodule Msfailab.Containers.Container do
 
         {:noreply, %{state | consoles: Map.put(state.consoles, track_id, updated_info)}}
       else
-        Logger.error("Console exceeded max restarts", track_id: track_id)
+        Logger.error("Console exceeded max restarts, giving up",
+          track_id: track_id,
+          attempts: new_restart_attempts,
+          max_attempts: console_max_restart_attempts()
+        )
+
         {:noreply, %{state | consoles: Map.delete(state.consoles, track_id)}}
       end
     else
+      Logger.debug("Console down but track not registered or container not running",
+        track_id: track_id,
+        registered: MapSet.member?(state.registered_tracks, track_id),
+        status: state.status
+      )
+
       {:noreply, %{state | consoles: Map.delete(state.consoles, track_id)}}
     end
   end
@@ -1254,10 +1301,16 @@ defmodule Msfailab.Containers.Container do
   defp schedule_console_restart(track_id, attempt) do
     backoff =
       Core.calculate_backoff(
-        attempt + 1,
+        attempt,
         console_restart_base_backoff_ms(),
         console_restart_max_backoff_ms()
       )
+
+    Logger.info("Scheduling console restart",
+      track_id: track_id,
+      attempt: attempt,
+      backoff_ms: backoff
+    )
 
     Process.send_after(self(), {:restart_console, track_id}, backoff)
   end

@@ -21,6 +21,8 @@
       "Bash(PGPASSWORD=postgres psql:*)",
       "Bash(pg_dump:*)",
 
+      "Bash(docker:*)",
+
       "Bash(git log:*)",
       "Bash(git diff:*)",
       "Bash(git show:*)",

@@ -671,4 +671,166 @@ defmodule Msfailab.Containers.ContainerTest do
       Process.sleep(50)
     end
   end
+
+  describe "console spawn failure and retry" do
+    test "retries console spawn when login fails" do
+      # Use stub for Docker to allow multiple calls if needed
+      stub(DockerAdapterMock, :start_container, fn _name, _labels ->
+        {:ok, "retry_container"}
+      end)
+
+      stub(DockerAdapterMock, :get_rpc_endpoint, fn "retry_container" ->
+        {:ok, %{host: "localhost", port: 55_553}}
+      end)
+
+      # Track login calls to differentiate container login from console login
+      login_count = :counters.new(1, [:atomics])
+
+      stub(MsgrpcClientMock, :login, fn _, _, _ ->
+        :counters.add(login_count, 1, 1)
+        count = :counters.get(login_count, 1)
+
+        if count == 1 do
+          # First call: container login succeeds
+          {:ok, "container-token"}
+        else
+          # Subsequent calls: console login fails
+          {:error, {:auth_failed, "token expired"}}
+        end
+      end)
+
+      _pid =
+        start_supervised!(
+          {Container,
+           container_record_id: 2001,
+           workspace_id: 1,
+           workspace_slug: "ws",
+           container_slug: "container",
+           container_name: "Test Container",
+           docker_image: "test:latest",
+           auto_start: true}
+        )
+
+      # Wait for container to become running
+      Process.sleep(30)
+      assert {:running, _} = Container.get_status(2001)
+
+      # Register a console - this triggers spawn_console which will fail
+      assert :ok = Container.register_console(2001, 42)
+
+      # Wait for spawn attempt to fail and schedule retry
+      Process.sleep(20)
+
+      # Check that restart_attempts is tracked
+      snapshot = Container.get_state_snapshot(2001)
+      assert MapSet.member?(snapshot.registered_tracks, 42)
+      console_info = Map.get(snapshot.consoles, 42)
+      assert console_info != nil
+      assert console_info.restart_attempts >= 1
+      assert console_info.pid == nil
+    end
+
+    test "tracks restart attempts when login keeps failing" do
+      stub(DockerAdapterMock, :start_container, fn _name, _labels ->
+        {:ok, "multi_retry_container"}
+      end)
+
+      stub(DockerAdapterMock, :get_rpc_endpoint, fn "multi_retry_container" ->
+        {:ok, %{host: "localhost", port: 55_553}}
+      end)
+
+      # Container login succeeds, then console logins fail
+      login_count = :counters.new(1, [:atomics])
+
+      stub(MsgrpcClientMock, :login, fn _, _, _ ->
+        :counters.add(login_count, 1, 1)
+        count = :counters.get(login_count, 1)
+
+        if count == 1 do
+          {:ok, "container-token"}
+        else
+          {:error, {:auth_failed, "server unreachable"}}
+        end
+      end)
+
+      _pid =
+        start_supervised!(
+          {Container,
+           container_record_id: 2002,
+           workspace_id: 1,
+           workspace_slug: "ws",
+           container_slug: "container",
+           container_name: "Test Container",
+           docker_image: "test:latest",
+           auto_start: true}
+        )
+
+      Process.sleep(30)
+      assert {:running, _} = Container.get_status(2002)
+
+      assert :ok = Container.register_console(2002, 42)
+
+      # Wait for multiple restart attempts with backoff
+      # Fast timing: 1ms base, so 1ms -> 2ms -> 4ms
+      Process.sleep(50)
+
+      # Check restart_attempts incremented
+      snapshot = Container.get_state_snapshot(2002)
+      console_info = Map.get(snapshot.consoles, 42)
+
+      # Should have attempted multiple times by now
+      assert console_info != nil
+      assert console_info.restart_attempts >= 2
+    end
+
+    test "gives up after max restart attempts" do
+      stub(DockerAdapterMock, :start_container, fn _name, _labels ->
+        {:ok, "max_retry_container"}
+      end)
+
+      stub(DockerAdapterMock, :get_rpc_endpoint, fn "max_retry_container" ->
+        {:ok, %{host: "localhost", port: 55_553}}
+      end)
+
+      # Container login succeeds once, then all console logins fail
+      login_count = :counters.new(1, [:atomics])
+
+      stub(MsgrpcClientMock, :login, fn _, _, _ ->
+        :counters.add(login_count, 1, 1)
+        count = :counters.get(login_count, 1)
+
+        if count == 1 do
+          {:ok, "container-token"}
+        else
+          {:error, {:auth_failed, "permanent failure"}}
+        end
+      end)
+
+      _pid =
+        start_supervised!(
+          {Container,
+           container_record_id: 2003,
+           workspace_id: 1,
+           workspace_slug: "ws",
+           container_slug: "container",
+           container_name: "Test Container",
+           docker_image: "test:latest",
+           auto_start: true}
+        )
+
+      Process.sleep(30)
+      assert {:running, _} = Container.get_status(2003)
+
+      assert :ok = Container.register_console(2003, 42)
+
+      # Wait for all retries to exhaust (with fast timing: 10 attempts max)
+      # Backoff: 1 + 2 + 4 + 8 + 16 + 30 + 30 + 30 + 30 + 30 = ~181ms + processing time
+      # Need to wait until attempt 11 is checked and fails the condition
+      Process.sleep(400)
+
+      # Console should be removed from state after max attempts
+      snapshot = Container.get_state_snapshot(2003)
+      refute Map.has_key?(snapshot.consoles, 42)
+    end
+  end
 end

@@ -1,11 +1,31 @@
 ---
-name: debugging-runtime
-description: "STOP reading code. Observe the running system. Use when: user says 'doesn't work'/'broken'/'something's wrong', tests pass but feature fails, behavior differs from expectations, verifying a fix worked. Logs, Docker, database, browser—see actual state."
+name: debugging
+description: "STOP guessing. Investigate systematically. Use when: user reports an issue or bug, says 'doesn't work'/'broken'/'error'/'failed', investigating test failures, analyzing unexpected behavior, tracking down root causes, verifying fixes. Covers: logs, Docker, database, browser automation, and debugging strategy."
 ---
 
-# Debugging Runtime
+# Debugging
 
-When code inspection alone doesn't reveal the issue, investigate the running system.
+Systematic investigation beats code inspection. This skill equips you to find root causes efficiently.
+
+## Debugging Strategy
+
+Before diving into tools, establish the facts:
+
+1. **Reproduce** - Can you trigger the issue? What are the exact steps?
+2. **Isolate** - When did it last work? What changed?
+3. **Observe** - What does the system actually do vs. what's expected?
+4. **Hypothesize** - Form a theory, then test it with evidence
+
+### Common Investigation Patterns
+
+| Symptom | Start Here |
+|---------|------------|
+| "It doesn't work" | Ask user for exact error/behavior, check `log/app.log` |
+| Test failure | Read the failure message, check test setup, run with `PRINT_LOGS=true` |
+| UI not updating | Check `log/events.log` for PubSub, browser console for JS errors |
+| Container issues | `docker ps`, `docker logs`, check container state |
+| Data looks wrong | Query database directly, trace the write path in logs |
+| Intermittent failure | Look for race conditions, check timing, add logging |
 
 ## Observation Tools
 
@@ -151,7 +171,7 @@ For simple checks without full browser session, use WebFetch:
 WebFetch(url: "http://localhost:4000/", prompt: "Check if page loads correctly")
 ```
 
-## Debugging Workflow
+## Investigation Checklist
 
 1. **Check logs first** - Most issues leave traces in `app.log` or `events.log`
 2. **Verify container state** - Use `docker ps` to confirm expected containers are running

@@ -125,5 +125,7 @@ jobs:
           cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository }}-msfconsole:buildcache,mode=max
 
       # Publish docker-compose.yml as OCI artifact
+      # Note: Using "yes |" workaround until --yes flag is fixed
+      # https://github.com/docker/compose/pull/13151
       - name: Publish compose file
-        run: docker compose -f docker-compose.release.yml publish --yes ${{ env.REGISTRY }}/${{ github.repository }}:latest
+        run: yes | docker compose -f docker-compose.release.yml publish --yes ${{ env.REGISTRY }}/${{ github.repository }}:latest
