@@ -33,12 +33,13 @@ defmodule Msfailab.Containers.ContainerTest do
 
   describe "start_link/1" do
     test "starts container on init and becomes :starting" do
-      expect(DockerAdapterMock, :start_container, fn name, labels ->
+      expect(DockerAdapterMock, :start_container, fn name, labels, rpc_port ->
         assert name == "msfailab-test-workspace-test-container"
         assert labels["msfailab.managed"] == "true"
         assert labels["msfailab.container_id"] == "123"
         assert labels["msfailab.workspace_slug"] == "test-workspace"
         assert labels["msfailab.container_slug"] == "test-container"
+        assert rpc_port >= 50_000 and rpc_port <= 60_000
         {:ok, "container_abc123"}
       end)
 
@@ -104,7 +105,7 @@ defmodule Msfailab.Containers.ContainerTest do
         false
       end)
 
-      expect(DockerAdapterMock, :start_container, fn _name, _labels ->
+      expect(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "new_container_123"}
       end)
 
@@ -136,7 +137,7 @@ defmodule Msfailab.Containers.ContainerTest do
 
   describe "get_status/1" do
     test "returns status and container_id" do
-      expect(DockerAdapterMock, :start_container, fn _name, _labels ->
+      expect(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "status_test_container"}
       end)
 
@@ -167,7 +168,7 @@ defmodule Msfailab.Containers.ContainerTest do
 
   describe "register_console/2 and unregister_console/2" do
     test "register returns ok and tracks the track_id" do
-      expect(DockerAdapterMock, :start_container, fn _name, _labels ->
+      expect(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "reg_container"}
       end)
 
@@ -198,7 +199,7 @@ defmodule Msfailab.Containers.ContainerTest do
     end
 
     test "unregister removes track from registered_tracks" do
-      expect(DockerAdapterMock, :start_container, fn _name, _labels ->
+      expect(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "unreg_container"}
       end)
 
@@ -232,7 +233,7 @@ defmodule Msfailab.Containers.ContainerTest do
 
   describe "send_metasploit_command/3" do
     test "returns error when console not registered" do
-      expect(DockerAdapterMock, :start_container, fn _name, _labels ->
+      expect(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "cmd_container"}
       end)
 
@@ -262,7 +263,7 @@ defmodule Msfailab.Containers.ContainerTest do
 
   describe "send_bash_command/3" do
     test "returns error when container not running" do
-      expect(DockerAdapterMock, :start_container, fn _name, _labels ->
+      expect(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "bash_container"}
       end)
 
@@ -292,7 +293,7 @@ defmodule Msfailab.Containers.ContainerTest do
 
   describe "terminate/2" do
     test "stops container when process terminates" do
-      expect(DockerAdapterMock, :start_container, fn _name, _labels ->
+      expect(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "terminate_container"}
       end)
 
@@ -336,7 +337,7 @@ defmodule Msfailab.Containers.ContainerTest do
 
   describe "whereis/1" do
     test "returns pid for registered container" do
-      expect(DockerAdapterMock, :start_container, fn _name, _labels ->
+      expect(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "whereis_container"}
       end)
 
@@ -369,7 +370,7 @@ defmodule Msfailab.Containers.ContainerTest do
 
   describe "get_state_snapshot/1" do
     test "returns current state" do
-      expect(DockerAdapterMock, :start_container, fn _name, _labels ->
+      expect(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "snapshot_container"}
       end)
 
@@ -404,7 +405,7 @@ defmodule Msfailab.Containers.ContainerTest do
     test "transitions to :running after successful MSGRPC login" do
       Events.subscribe_to_workspace(1)
 
-      expect(DockerAdapterMock, :start_container, fn _name, _labels ->
+      expect(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "msgrpc_container"}
       end)
 
@@ -441,7 +442,7 @@ defmodule Msfailab.Containers.ContainerTest do
     end
 
     test "retries MSGRPC login on failure with backoff" do
-      expect(DockerAdapterMock, :start_container, fn _name, _labels ->
+      expect(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "retry_container"}
       end)
 
@@ -481,7 +482,7 @@ defmodule Msfailab.Containers.ContainerTest do
 
   describe "get_rpc_endpoint/1" do
     test "returns endpoint when available" do
-      expect(DockerAdapterMock, :start_container, fn _name, _labels ->
+      expect(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "rpc_container"}
       end)
 
@@ -517,7 +518,7 @@ defmodule Msfailab.Containers.ContainerTest do
 
   describe "get_running_bash_commands/1" do
     test "returns empty list initially" do
-      expect(DockerAdapterMock, :start_container, fn _name, _labels ->
+      expect(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "bash_cmds_container"}
       end)
 
@@ -546,7 +547,7 @@ defmodule Msfailab.Containers.ContainerTest do
 
   describe "send_bash_command/3 when running" do
     test "executes bash command and returns result" do
-      expect(DockerAdapterMock, :start_container, fn _name, _labels ->
+      expect(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "bash_exec_container"}
       end)
 
@@ -588,7 +589,7 @@ defmodule Msfailab.Containers.ContainerTest do
     end
 
     test "handles bash command with non-zero exit code" do
-      expect(DockerAdapterMock, :start_container, fn _name, _labels ->
+      expect(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "bash_exit_container"}
       end)
 
@@ -630,7 +631,7 @@ defmodule Msfailab.Containers.ContainerTest do
     end
 
     test "handles bash command infrastructure error" do
-      expect(DockerAdapterMock, :start_container, fn _name, _labels ->
+      expect(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "bash_error_container"}
       end)
 
@@ -675,7 +676,7 @@ defmodule Msfailab.Containers.ContainerTest do
   describe "console spawn failure and retry" do
     test "retries console spawn when login fails" do
       # Use stub for Docker to allow multiple calls if needed
-      stub(DockerAdapterMock, :start_container, fn _name, _labels ->
+      stub(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "retry_container"}
       end)
 
@@ -731,7 +732,7 @@ defmodule Msfailab.Containers.ContainerTest do
     end
 
     test "tracks restart attempts when login keeps failing" do
-      stub(DockerAdapterMock, :start_container, fn _name, _labels ->
+      stub(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "multi_retry_container"}
       end)
 
@@ -784,7 +785,7 @@ defmodule Msfailab.Containers.ContainerTest do
     end
 
     test "gives up after max restart attempts" do
-      stub(DockerAdapterMock, :start_container, fn _name, _labels ->
+      stub(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "max_retry_container"}
       end)
 
@@ -844,7 +845,7 @@ defmodule Msfailab.Containers.ContainerTest do
         retry_delays_ms: [5, 10, 20]
       )
 
-      stub(DockerAdapterMock, :start_container, fn _name, _labels ->
+      stub(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "crash_restart_container"}
       end)
 
@@ -945,7 +946,7 @@ defmodule Msfailab.Containers.ContainerTest do
     end
 
     test "logs warning when console down but container not running" do
-      stub(DockerAdapterMock, :start_container, fn _name, _labels ->
+      stub(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "logging_test_container"}
       end)
 

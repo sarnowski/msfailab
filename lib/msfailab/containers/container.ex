@@ -368,6 +368,7 @@ defmodule Msfailab.Containers.Container do
   alias Msfailab.Containers.Container.Core
   alias Msfailab.Containers.DockerAdapter
   alias Msfailab.Containers.Msgrpc.Console
+  alias Msfailab.Containers.PortAllocator
   alias Msfailab.Events
   alias Msfailab.Events.CommandIssued
   alias Msfailab.Events.CommandResult
@@ -633,6 +634,7 @@ defmodule Msfailab.Containers.Container do
       container_name: container_name,
       docker_image: docker_image,
       docker_container_id: existing_docker_container_id,
+      rpc_port: nil,
       rpc_endpoint: nil,
       status: :offline,
       restart_count: 0,
@@ -1031,9 +1033,22 @@ defmodule Msfailab.Containers.Container do
         state.container_slug
       )
 
-    Logger.info("Starting Docker container", docker_name: name)
+    # Allocate a unique RPC port, avoiding ports used by other containers
+    used_ports = get_used_rpc_ports()
 
-    with {:ok, docker_container_id} <- docker_adapter().start_container(name, labels),
+    case PortAllocator.allocate_port(used_ports) do
+      {:ok, rpc_port} ->
+        Logger.info("Starting Docker container", docker_name: name, rpc_port: rpc_port)
+        do_start_container(state, name, labels, rpc_port)
+
+      {:error, :no_ports_available} ->
+        Logger.error("No RPC ports available in range")
+        {:error, :no_ports_available}
+    end
+  end
+
+  defp do_start_container(state, name, labels, rpc_port) do
+    with {:ok, docker_container_id} <- docker_adapter().start_container(name, labels, rpc_port),
          {:ok, rpc_endpoint} <- docker_adapter().get_rpc_endpoint(docker_container_id) do
       Logger.info("Docker container started",
         docker_container_id: docker_container_id,
@@ -1044,6 +1059,7 @@ defmodule Msfailab.Containers.Container do
       new_state = %{
         state
         | docker_container_id: docker_container_id,
+          rpc_port: rpc_port,
           rpc_endpoint: rpc_endpoint,
           status: :starting,
           started_at: DateTime.utc_now()
@@ -1061,9 +1077,11 @@ defmodule Msfailab.Containers.Container do
     if docker_adapter().container_running?(state.docker_container_id) do
       case docker_adapter().get_rpc_endpoint(state.docker_container_id) do
         {:ok, rpc_endpoint} ->
+          # Get the port from the endpoint (it was read from container labels)
           new_state = %{
             state
-            | rpc_endpoint: rpc_endpoint,
+            | rpc_port: rpc_endpoint.port,
+              rpc_endpoint: rpc_endpoint,
               status: :starting,
               started_at: DateTime.utc_now()
           }
@@ -1419,5 +1437,21 @@ defmodule Msfailab.Containers.Container do
 
   defp msgrpc_password do
     Application.get_env(:msfailab, :msf_rpc_pass, "secret")
+  end
+
+  # Get RPC ports currently in use by other Container GenServers
+  defp get_used_rpc_ports do
+    Registry.select(Msfailab.Containers.Registry, [{{:_, :"$1", :_}, [], [:"$1"]}])
+    |> Enum.map(fn pid ->
+      try do
+        case :sys.get_state(pid, 100) do
+          %{rpc_port: port} when is_integer(port) -> port
+          _ -> nil
+        end
+      catch
+        :exit, _ -> nil
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
   end
 end

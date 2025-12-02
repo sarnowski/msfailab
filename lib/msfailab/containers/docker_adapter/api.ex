@@ -48,21 +48,23 @@ defmodule Msfailab.Containers.DockerAdapter.Api do
   @default_rpc_port 55_553
 
   @impl true
-  @spec start_container(String.t(), map()) :: {:ok, String.t()} | {:error, term()}
-  def start_container(name, labels) do
+  @spec start_container(String.t(), map(), pos_integer()) :: {:ok, String.t()} | {:error, term()}
+  def start_container(name, labels, rpc_port) do
     image = Application.get_env(:msfailab, :docker_image, @default_image)
     network = Application.get_env(:msfailab, :docker_network, "msfailab")
     rpc_mode = Application.get_env(:msfailab, :docker_rpc_mode, :port_mapping)
-    rpc_port = Application.get_env(:msfailab, :msf_rpc_port, @default_rpc_port)
+
+    # Add rpc_port to labels for recovery on restart
+    labels_with_port = Map.put(labels, "msfailab.rpc_port", to_string(rpc_port))
 
     create_body =
       %{
         "Image" => image,
-        "Labels" => labels,
+        "Labels" => labels_with_port,
         "Tty" => true,
         "OpenStdin" => true,
         "StdinOnce" => false,
-        "Cmd" => build_msf_command(),
+        "Cmd" => build_msf_command(rpc_port),
         "ExposedPorts" => %{"#{rpc_port}/tcp" => %{}},
         "HostConfig" => build_host_config(network, rpc_port, rpc_mode)
       }
@@ -70,7 +72,8 @@ defmodule Msfailab.Containers.DockerAdapter.Api do
     Logger.info("Creating Docker container",
       name: name,
       image: image,
-      network: network
+      network: network,
+      rpc_port: rpc_port
     )
 
     with {:ok, container_id} <- create_container(name, create_body),
@@ -84,9 +87,8 @@ defmodule Msfailab.Containers.DockerAdapter.Api do
     end
   end
 
-  defp build_msf_command do
+  defp build_msf_command(rpc_port) do
     db_url = Application.get_env(:msfailab, :msf_db_url)
-    rpc_port = Application.get_env(:msfailab, :msf_rpc_port, @default_rpc_port)
     rpc_pass = Application.get_env(:msfailab, :msf_rpc_pass, "secret")
 
     # Start msfconsole, connect to database, load msgrpc plugin
@@ -182,30 +184,12 @@ defmodule Msfailab.Containers.DockerAdapter.Api do
   @impl true
   @spec get_rpc_endpoint(String.t()) :: {:ok, map()} | {:error, term()}
   def get_rpc_endpoint(container_id) do
+    network = Application.get_env(:msfailab, :docker_network, "msfailab")
     rpc_mode = Application.get_env(:msfailab, :docker_rpc_mode, :port_mapping)
-    rpc_port = Application.get_env(:msfailab, :msf_rpc_port, @default_rpc_port)
 
-    case rpc_mode do
-      :port_mapping ->
-        get_mapped_port_endpoint(container_id, rpc_port)
-
-      :network ->
-        get_network_endpoint(container_id, rpc_port)
-    end
-  end
-
-  defp get_mapped_port_endpoint(container_id, rpc_port) do
     case request(:get, "/containers/#{container_id}/json") do
       {:ok, %{status: 200, body: body}} ->
-        port_key = "#{rpc_port}/tcp"
-
-        case get_in(body, ["NetworkSettings", "Ports", port_key]) do
-          [%{"HostIp" => _host_ip, "HostPort" => host_port} | _] ->
-            {:ok, %{host: "localhost", port: String.to_integer(host_port)}}
-
-          _ ->
-            {:error, :port_not_mapped}
-        end
+        get_endpoint_from_container(body, network, rpc_mode)
 
       {:ok, %{status: 404}} ->
         {:error, :not_found}
@@ -218,21 +202,43 @@ defmodule Msfailab.Containers.DockerAdapter.Api do
     end
   end
 
-  defp get_network_endpoint(container_id, rpc_port) do
-    case request(:get, "/containers/#{container_id}/json") do
-      {:ok, %{status: 200, body: %{"Name" => name}}} ->
-        # Container name includes leading slash
+  defp get_endpoint_from_container(body, network, rpc_mode) do
+    # Get port from container labels (set when container was started)
+    rpc_port = get_rpc_port_from_labels(body)
+
+    cond do
+      # Host network mode: access via localhost
+      network == "host" ->
+        {:ok, %{host: "localhost", port: rpc_port}}
+
+      # Port mapping mode (development): get mapped port
+      rpc_mode == :port_mapping ->
+        get_mapped_port(body, rpc_port)
+
+      # Bridge network mode: access via container name
+      true ->
+        name = get_in(body, ["Name"]) || ""
         container_name = String.trim_leading(name, "/")
         {:ok, %{host: container_name, port: rpc_port}}
+    end
+  end
 
-      {:ok, %{status: 404}} ->
-        {:error, :not_found}
+  defp get_rpc_port_from_labels(body) do
+    case get_in(body, ["Config", "Labels", "msfailab.rpc_port"]) do
+      nil -> @default_rpc_port
+      port_str -> String.to_integer(port_str)
+    end
+  end
 
-      {:ok, %{status: status, body: body}} ->
-        {:error, {:unexpected_status, status, body}}
+  defp get_mapped_port(body, rpc_port) do
+    port_key = "#{rpc_port}/tcp"
 
-      {:error, reason} ->
-        {:error, reason}
+    case get_in(body, ["NetworkSettings", "Ports", port_key]) do
+      [%{"HostIp" => _host_ip, "HostPort" => host_port} | _] ->
+        {:ok, %{host: "localhost", port: String.to_integer(host_port)}}
+
+      _ ->
+        {:error, :port_not_mapped}
     end
   end
 

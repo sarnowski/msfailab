@@ -30,11 +30,16 @@ config :msfailab, MsfailabWeb.Endpoint,
 
 # Docker configuration from environment variables
 # MSFAILAB_DOCKER_ENDPOINT: Unix socket path or "tcp://host:port" for remote daemon
+# MSFAILAB_DOCKER_NETWORK: Docker network for msfconsole containers ("host" or network name)
 # MSFAILAB_DEFAULT_CONSOLE_IMAGE: Container image for Metasploit (default in config.exs)
 # MSF_DB_URL: PostgreSQL URL for MSF containers (from container network perspective)
 # MSF_RPC_PASS: Password for MSF RPC authentication
 if docker_endpoint = System.get_env("MSFAILAB_DOCKER_ENDPOINT") do
   config :msfailab, docker_endpoint: docker_endpoint
+end
+
+if docker_network = System.get_env("MSFAILAB_DOCKER_NETWORK") do
+  config :msfailab, docker_network: docker_network
 end
 
 if docker_image = System.get_env("MSFAILAB_DEFAULT_CONSOLE_IMAGE") do

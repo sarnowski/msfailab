@@ -55,11 +55,15 @@ defmodule Msfailab.Containers.DockerAdapter do
         }
 
   @doc """
-  Starts a new container with the given name and labels.
+  Starts a new container with the given name, labels, and RPC port.
+
+  The RPC port is used for MSGRPC communication. In host network mode, each
+  container must use a unique port. In bridge network mode, containers use
+  the same port but are accessed by container name.
 
   Returns `{:ok, container_id}` on success or `{:error, reason}` on failure.
   """
-  @callback start_container(name :: container_name(), labels :: map()) ::
+  @callback start_container(name :: container_name(), labels :: map(), rpc_port :: pos_integer()) ::
               {:ok, container_id()} | {:error, term()}
 
   @doc """

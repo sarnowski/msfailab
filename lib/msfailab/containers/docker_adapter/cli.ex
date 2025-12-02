@@ -44,11 +44,12 @@ defmodule Msfailab.Containers.DockerAdapter.Cli do
   require Logger
 
   @impl true
-  @spec start_container(String.t(), map()) :: {:ok, String.t()} | {:error, term()}
-  def start_container(name, labels) do
+  @spec start_container(String.t(), map(), pos_integer()) :: {:ok, String.t()} | {:error, term()}
+  def start_container(name, labels, rpc_port) do
     Logger.info("DockerAdapter.Cli: Would start container",
       name: name,
-      labels: inspect(labels)
+      labels: inspect(labels),
+      rpc_port: rpc_port
     )
 
     # Stub: Generate a fake container ID

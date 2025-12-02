@@ -32,51 +32,47 @@ A real-time web UI gives everyone visibility into all research activities. See a
 
 ## Quick Start
 
-msfailab requires Docker and at least one AI backend configured.
+msfailab requires Docker and at least one AI backend configured. See [DEPLOYMENT.md](DEPLOYMENT.md) for full deployment options including macOS support.
 
-### Option 1: Pre-built Release (Recommended)
+### Linux (Recommended)
 
 ```bash
 # Create configuration file (at least one AI backend required)
 cat > msfailab.conf << 'EOF'
-MSFAILAB_OLLAMA_HOST=http://host.docker.internal:11434
+MSFAILAB_OLLAMA_HOST=http://localhost:11434
 # MSFAILAB_OPENAI_API_KEY=sk-...
 # MSFAILAB_ANTHROPIC_API_KEY=sk-ant-...
 EOF
 
 # Load configuration and start msfailab
 set -a && source msfailab.conf && set +a
-docker compose -f oci://ghcr.io/sarnowski/msfailab:latest up
+docker compose -f oci://ghcr.io/sarnowski/msfailab/compose.linux.release:latest up -d
 ```
 
 Open http://localhost:4000 in your browser.
 
 For a full configuration template with all options, download [msfailab.conf.example](https://github.com/sarnowski/msfailab/blob/main/msfailab.conf.example).
 
-### Option 2: Build from Source
+### macOS
+
+macOS users should use the macOS-specific compose file due to Docker Desktop networking limitations:
 
 ```bash
-git clone https://github.com/sarnowski/msfailab.git
-cd msfailab
-
-# Configure AI backend (at least one required)
-cp msfailab.conf.example .env
-# Edit .env with your API keys
-
-# Build and run
-docker compose up --build
+# Load configuration and start msfailab
+set -a && source msfailab.conf && set +a
+docker compose -f oci://ghcr.io/sarnowski/msfailab/compose.macos.release:latest up -d
 ```
 
-Open http://localhost:4000 in your browser.
+**Note:** Reverse shells don't work on macOS due to Docker Desktop limitations. See [DEPLOYMENT.md](DEPLOYMENT.md) for details.
 
-### Option 3: Development Setup
+### Development Setup
 
 ```bash
 git clone https://github.com/sarnowski/msfailab.git
 cd msfailab
 
-# Start dependencies
-docker compose -f docker-compose.dev.yml up -d
+# Start dependencies (use compose.macos.dev.yaml on macOS)
+docker compose -f compose.linux.dev.yaml up --build -d
 
 # Configure AI backend (at least one required)
 cp msfailab.conf.example .env

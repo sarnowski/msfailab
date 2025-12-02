@@ -1,0 +1,87 @@
+# Linux Release: Pre-built images with host network mode
+# Usage: docker compose -f compose.linux.release.yaml up -d
+#
+# Or via OCI artifact (recommended):
+#   docker compose -f oci://ghcr.io/sarnowski/msfailab/compose.linux.release:latest up -d
+#
+# Configuration: Set environment variables before running (see msfailab.conf.example).
+# At minimum, configure one AI backend (MSFAILAB_OLLAMA_HOST, MSFAILAB_OPENAI_API_KEY,
+# or MSFAILAB_ANTHROPIC_API_KEY).
+#
+# SECURITY: For non-demo deployments, generate a secret key:
+#   openssl rand -base64 48
+# Then set MSFAILAB_SECRET_KEY_BASE in your environment.
+
+services:
+  postgres:
+    image: postgres:17
+    container_name: msfailab-postgres
+    network_mode: host
+    # Bind to localhost only - not exposed to network
+    command: postgres -c listen_addresses=localhost
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: msfailab
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -h localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  msfconsole-image:
+    image: ghcr.io/sarnowski/msfailab-msfconsole:latest
+    command: ["true"]
+    network_mode: host
+
+  migrate:
+    image: ghcr.io/sarnowski/msfailab-server:latest
+    network_mode: host
+    command: /app/bin/migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ecto://postgres:postgres@localhost/msfailab
+      # SECURITY: Change for non-demo deployments! Generate with: openssl rand -base64 48
+      MSFAILAB_SECRET_KEY_BASE: ${MSFAILAB_SECRET_KEY_BASE:-insecure-demo-secret-change-me-in-production-generate-with-openssl}
+
+  server:
+    image: ghcr.io/sarnowski/msfailab-server:latest
+    network_mode: host
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      msfconsole-image:
+        condition: service_completed_successfully
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      DATABASE_URL: ecto://postgres:postgres@localhost/msfailab
+      # SECURITY: Change for non-demo deployments! Generate with: openssl rand -base64 48
+      MSFAILAB_SECRET_KEY_BASE: ${MSFAILAB_SECRET_KEY_BASE:-insecure-demo-secret-change-me-in-production-generate-with-openssl}
+      # Web UI binding (default: localhost only)
+      MSFAILAB_PORT: ${MSFAILAB_PORT:-4000}
+      MSFAILAB_HOST: ${MSFAILAB_HOST:-localhost}
+      # Docker configuration
+      MSFAILAB_DOCKER_ENDPOINT: /var/run/docker.sock
+      MSFAILAB_DOCKER_NETWORK: host
+      MSFAILAB_DEFAULT_CONSOLE_IMAGE: ${MSFAILAB_DEFAULT_CONSOLE_IMAGE:-ghcr.io/sarnowski/msfailab-msfconsole:latest}
+      # Database URL for MSF containers (on host network, use localhost)
+      MSF_DB_URL: postgres://postgres:postgres@localhost:5432/msfailab
+      # AI backend configuration (at least one required)
+      MSFAILAB_OLLAMA_HOST: ${MSFAILAB_OLLAMA_HOST:-}
+      MSFAILAB_OLLAMA_MODEL_FILTER: ${MSFAILAB_OLLAMA_MODEL_FILTER:-}
+      MSFAILAB_OLLAMA_THINKING: ${MSFAILAB_OLLAMA_THINKING:-}
+      MSFAILAB_OPENAI_API_KEY: ${MSFAILAB_OPENAI_API_KEY:-}
+      MSFAILAB_OPENAI_MODEL_FILTER: ${MSFAILAB_OPENAI_MODEL_FILTER:-}
+      MSFAILAB_ANTHROPIC_API_KEY: ${MSFAILAB_ANTHROPIC_API_KEY:-}
+      MSFAILAB_ANTHROPIC_MODEL_FILTER: ${MSFAILAB_ANTHROPIC_MODEL_FILTER:-}
+      MSFAILAB_DEFAULT_MODEL: ${MSFAILAB_DEFAULT_MODEL:-}
+
+volumes:
+  postgres_data:

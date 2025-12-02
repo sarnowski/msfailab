@@ -131,8 +131,12 @@ jobs:
           curl -SL https://github.com/docker/compose/releases/download/v2.40.3/docker-compose-linux-x86_64 -o ~/.docker/cli-plugins/docker-compose
           chmod +x ~/.docker/cli-plugins/docker-compose
 
-      # Publish docker-compose.yml as OCI artifact
-      - name: Publish compose file
+      # Publish compose files as OCI artifacts
+      - name: Publish Linux release compose file
         run: |
           docker compose version
-          docker compose -f docker-compose.release.yml publish --yes ${{ env.REGISTRY }}/${{ github.repository }}:latest
+          docker compose -f compose.linux.release.yaml publish --yes ${{ env.REGISTRY }}/${{ github.repository }}/compose.linux.release:latest
+
+      - name: Publish macOS release compose file
+        run: |
+          docker compose -f compose.macos.release.yaml publish --yes ${{ env.REGISTRY }}/${{ github.repository }}/compose.macos.release:latest

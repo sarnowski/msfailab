@@ -1,16 +1,20 @@
-# Local release: builds from source and runs in containers
-# Usage: docker compose up --build
+# macOS Release: Pre-built images with bridge network mode
+# Usage: docker compose -f compose.macos.release.yaml up -d
 #
-# For public release (pre-built images), use:
-#   docker compose -f oci://ghcr.io/sarnowski/msfailab:latest up
+# Or via OCI artifact (recommended):
+#   docker compose -f oci://ghcr.io/sarnowski/msfailab/compose.macos.release:latest up -d
 #
-# Configuration: Copy .env.example to .env and edit as needed.
+# Limitations:
+#   - No inbound connections from LAN (reverse shells don't work)
+#   - Web UI only accessible via localhost, not from LAN
+#
+# Configuration: Set environment variables before running (see msfailab.conf.example).
 # At minimum, configure one AI backend (MSFAILAB_OLLAMA_HOST, MSFAILAB_OPENAI_API_KEY,
 # or MSFAILAB_ANTHROPIC_API_KEY).
 #
 # SECURITY: For non-demo deployments, generate a secret key:
 #   openssl rand -base64 48
-# Then set MSFAILAB_SECRET_KEY_BASE in your .env file.
+# Then set MSFAILAB_SECRET_KEY_BASE in your environment.
 
 services:
   postgres:
@@ -31,15 +35,13 @@ services:
       retries: 5
 
   msfconsole-image:
-    build: ./msfconsole
-    image: msfailab-msfconsole
+    image: ghcr.io/sarnowski/msfailab-msfconsole:latest
     command: ["true"]
     networks:
       - msfailab
 
   migrate:
-    build: .
-    image: msfailab-server
+    image: ghcr.io/sarnowski/msfailab-server:latest
     command: /app/bin/migrate
     depends_on:
       postgres:
@@ -52,7 +54,7 @@ services:
       - msfailab
 
   server:
-    image: msfailab-server
+    image: ghcr.io/sarnowski/msfailab-server:latest
     depends_on:
       postgres:
         condition: service_healthy
@@ -61,7 +63,7 @@ services:
       msfconsole-image:
         condition: service_completed_successfully
     ports:
-      - "${MSFAILAB_PORT:-127.0.0.1:4000}:4000"
+      - "127.0.0.1:4000:4000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
@@ -72,7 +74,8 @@ services:
       MSFAILAB_HOST: ${MSFAILAB_HOST:-localhost}
       # Docker configuration
       MSFAILAB_DOCKER_ENDPOINT: /var/run/docker.sock
-      MSFAILAB_DEFAULT_CONSOLE_IMAGE: ${MSFAILAB_DEFAULT_CONSOLE_IMAGE:-msfailab-msfconsole}
+      MSFAILAB_DOCKER_NETWORK: msfailab
+      MSFAILAB_DEFAULT_CONSOLE_IMAGE: ${MSFAILAB_DEFAULT_CONSOLE_IMAGE:-ghcr.io/sarnowski/msfailab-msfconsole:latest}
       # Database URL for MSF containers (from container network perspective)
       MSF_DB_URL: postgres://postgres:postgres@msfailab-postgres:5432/msfailab
       # AI backend configuration (at least one required)

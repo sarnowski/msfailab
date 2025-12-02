@@ -31,7 +31,7 @@ defmodule Msfailab.ContainersCase do
         use Msfailab.ContainersCase, async: false
 
         test "starts container on init" do
-          expect(DockerAdapterMock, :start_container, fn _name, _labels ->
+          expect(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
             {:ok, "container123"}
           end)
 

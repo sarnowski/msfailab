@@ -32,7 +32,7 @@ defmodule Msfailab.Containers.ReconcilerTest do
 
   defp create_workspace_and_container(_context) do
     # Stub container operations for workspace/container/track creation
-    stub(DockerAdapterMock, :start_container, fn _name, _labels ->
+    stub(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
       {:ok, "stub_container_#{System.unique_integer([:positive])}"}
     end)
 
@@ -56,7 +56,7 @@ defmodule Msfailab.Containers.ReconcilerTest do
 
     test "starts Container GenServers for active containers", %{container: container} do
       # Create a track to make the container active
-      expect(DockerAdapterMock, :start_container, fn _name, _labels ->
+      expect(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "track_container"}
       end)
 
@@ -78,7 +78,7 @@ defmodule Msfailab.Containers.ReconcilerTest do
       end)
 
       # Expect a new container to be started for reconciliation
-      expect(DockerAdapterMock, :start_container, fn name, labels ->
+      expect(DockerAdapterMock, :start_container, fn name, labels, _rpc_port ->
         assert name == "msfailab-test-workspace-test-container"
         assert labels["msfailab.container_id"] == to_string(container.id)
         {:ok, "reconciled_container"}
@@ -131,7 +131,7 @@ defmodule Msfailab.Containers.ReconcilerTest do
 
     test "adopts existing Docker containers for active containers", %{container: container} do
       # Create a track to make the container active
-      expect(DockerAdapterMock, :start_container, fn _name, _labels ->
+      expect(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "original_container"}
       end)
 

@@ -1,11 +1,14 @@
 # msfailab Configuration
 #
 # For pre-built releases (OCI):
-#   Copy to msfailab.conf and run:
-#   docker compose -f oci://ghcr.io/sarnowski/msfailab:latest --env-file msfailab.conf up
+#   Copy to msfailab.conf, edit as needed, then run:
+#   set -a && source msfailab.conf && set +a
+#   docker compose -f oci://ghcr.io/sarnowski/msfailab/compose.linux.release:latest up -d
 #
 # For local builds or development:
 #   Copy to .env (Docker Compose auto-loads .env from the project directory)
+#
+# See DEPLOYMENT.md for full deployment options including macOS support.
 
 # =============================================================================
 # Security Configuration (REQUIRED for production)
@@ -77,6 +80,13 @@
 # macOS Colima: ~/.colima/docker.sock
 # Remote Docker: tcp://host:port
 # MSFAILAB_DOCKER_ENDPOINT=/var/run/docker.sock
+
+# Docker network for msfconsole containers
+# Linux: "host" for full network functionality (default in Linux compose files)
+# macOS: "msfailab" bridge network (default in macOS compose files)
+# NOTE: This is automatically set by the compose files. Only override if needed.
+# MSFAILAB_DOCKER_NETWORK=host
+# MSFAILAB_DOCKER_NETWORK=msfailab
 
 # Custom MSF console image (default: msfailab-msfconsole)
 # Use this to run a custom image with your tools pre-installed

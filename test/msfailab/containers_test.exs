@@ -264,12 +264,13 @@ defmodule Msfailab.ContainersTest do
     setup [:create_workspace_and_container, :container_with_workspace]
 
     test "starts a container process for a container record", %{container: container} do
-      expect(DockerAdapterMock, :start_container, fn name, labels ->
+      expect(DockerAdapterMock, :start_container, fn name, labels, rpc_port ->
         assert name == "msfailab-test-workspace-my-container"
         assert labels["msfailab.managed"] == "true"
         assert labels["msfailab.workspace_slug"] == "test-workspace"
         assert labels["msfailab.container_slug"] == "my-container"
         assert labels["msfailab.container_id"] == to_string(container.id)
+        assert rpc_port >= 50_000 and rpc_port <= 60_000
         {:ok, "container_123"}
       end)
 
@@ -297,7 +298,7 @@ defmodule Msfailab.ContainersTest do
     setup [:create_workspace_and_container, :container_with_workspace]
 
     test "stops a running container process", %{container: container} do
-      expect(DockerAdapterMock, :start_container, fn _name, _labels ->
+      expect(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "stop_test_container"}
       end)
 
@@ -325,7 +326,7 @@ defmodule Msfailab.ContainersTest do
     setup [:create_workspace_and_container, :container_with_workspace]
 
     test "returns status for running container", %{container: container} do
-      expect(DockerAdapterMock, :start_container, fn _name, _labels ->
+      expect(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "status_container"}
       end)
 
@@ -356,7 +357,7 @@ defmodule Msfailab.ContainersTest do
     setup [:create_workspace_and_container, :container_with_workspace]
 
     test "returns error when container not running", %{container: container} do
-      expect(DockerAdapterMock, :start_container, fn _name, _labels ->
+      expect(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "msf_container"}
       end)
 
@@ -388,7 +389,7 @@ defmodule Msfailab.ContainersTest do
     setup [:create_workspace_and_container, :container_with_workspace]
 
     test "returns error when container not running", %{container: container} do
-      expect(DockerAdapterMock, :start_container, fn _name, _labels ->
+      expect(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "bash_container"}
       end)
 
@@ -419,7 +420,7 @@ defmodule Msfailab.ContainersTest do
     setup [:create_workspace_and_container, :container_with_workspace]
 
     test "returns error when container not fully running", %{container: container} do
-      expect(DockerAdapterMock, :start_container, fn _name, _labels ->
+      expect(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "rpc_container"}
       end)
 
@@ -471,7 +472,7 @@ defmodule Msfailab.ContainersTest do
       workspace: workspace,
       container: container
     } do
-      expect(DockerAdapterMock, :start_container, fn _name, _labels ->
+      expect(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "get_containers_test"}
       end)
 
@@ -507,7 +508,7 @@ defmodule Msfailab.ContainersTest do
     } do
       container = Repo.preload(container, :workspace)
 
-      expect(DockerAdapterMock, :start_container, fn _name, _labels ->
+      expect(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "consoles_test"}
       end)
 
@@ -536,7 +537,7 @@ defmodule Msfailab.ContainersTest do
     test "registers with running container", %{container: container} do
       container = Repo.preload(container, :workspace)
 
-      expect(DockerAdapterMock, :start_container, fn _name, _labels ->
+      expect(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "register_test"}
       end)
 
@@ -561,7 +562,7 @@ defmodule Msfailab.ContainersTest do
     test "unregisters from running container", %{container: container} do
       container = Repo.preload(container, :workspace)
 
-      expect(DockerAdapterMock, :start_container, fn _name, _labels ->
+      expect(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "unregister_test"}
       end)
 
@@ -588,7 +589,7 @@ defmodule Msfailab.ContainersTest do
     test "returns empty list when no commands running", %{container: container} do
       container = Repo.preload(container, :workspace)
 
-      expect(DockerAdapterMock, :start_container, fn _name, _labels ->
+      expect(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
         {:ok, "bash_commands_test"}
       end)
 
