@@ -124,8 +124,15 @@ jobs:
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository }}-msfconsole:buildcache
           cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository }}-msfconsole:buildcache,mode=max
 
+      # Install latest Docker Compose (v2.39.3+ fixes --yes flag)
+      - name: Install Docker Compose v2.40.3
+        run: |
+          mkdir -p ~/.docker/cli-plugins
+          curl -SL https://github.com/docker/compose/releases/download/v2.40.3/docker-compose-linux-x86_64 -o ~/.docker/cli-plugins/docker-compose
+          chmod +x ~/.docker/cli-plugins/docker-compose
+
       # Publish docker-compose.yml as OCI artifact
-      # Note: Using "yes |" workaround until --yes flag is fixed
-      # https://github.com/docker/compose/pull/13151
       - name: Publish compose file
-        run: yes | docker compose -f docker-compose.release.yml publish --yes ${{ env.REGISTRY }}/${{ github.repository }}:latest
+        run: |
+          docker compose version
+          docker compose -f docker-compose.release.yml publish --yes ${{ env.REGISTRY }}/${{ github.repository }}:latest
