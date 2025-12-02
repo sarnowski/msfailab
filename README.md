@@ -37,13 +37,21 @@ msfailab requires Docker and at least one AI backend configured.
 ### Option 1: Pre-built Release (Recommended)
 
 ```bash
-# Create configuration
-echo "MSFAILAB_OPENAI_API_KEY=sk-..." > .env
-# Or use Ollama: echo "MSFAILAB_OLLAMA_HOST=http://host.docker.internal:11434" > .env
+# Create configuration file (at least one AI backend required)
+cat > msfailab.conf << 'EOF'
+MSFAILAB_OLLAMA_HOST=http://host.docker.internal:11434
+# MSFAILAB_OPENAI_API_KEY=sk-...
+# MSFAILAB_ANTHROPIC_API_KEY=sk-ant-...
+EOF
 
-# Start msfailab
+# Load configuration and start msfailab
+set -a && source msfailab.conf && set +a
 docker compose -f oci://ghcr.io/sarnowski/msfailab:latest up
 ```
+
+Open http://localhost:4000 in your browser.
+
+For a full configuration template with all options, download [msfailab.conf.example](https://github.com/sarnowski/msfailab/blob/main/msfailab.conf.example).
 
 ### Option 2: Build from Source
 
@@ -51,13 +59,15 @@ docker compose -f oci://ghcr.io/sarnowski/msfailab:latest up
 git clone https://github.com/sarnowski/msfailab.git
 cd msfailab
 
-# Configure AI backend
-cp .env.example .env
+# Configure AI backend (at least one required)
+cp msfailab.conf.example .env
 # Edit .env with your API keys
 
 # Build and run
 docker compose up --build
 ```
+
+Open http://localhost:4000 in your browser.
 
 ### Option 3: Development Setup
 
@@ -68,8 +78,8 @@ cd msfailab
 # Start dependencies
 docker compose -f docker-compose.dev.yml up -d
 
-# Configure and setup
-cp .env.example .env
+# Configure AI backend (at least one required)
+cp msfailab.conf.example .env
 # Edit .env with your API keys
 mix setup
 
@@ -81,7 +91,7 @@ Open http://localhost:4000 in your browser.
 
 ## Configuration
 
-All configuration is done via environment variables. Copy `.env.example` to `.env` and edit as needed.
+All configuration is done via environment variables. See [msfailab.conf.example](msfailab.conf.example) for a complete template with all options documented.
 
 ### AI Backends (at least one required)
 

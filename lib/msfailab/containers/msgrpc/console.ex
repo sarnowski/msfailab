@@ -415,6 +415,17 @@ defmodule Msfailab.Containers.Msgrpc.Console do
   end
 
   @doc """
+  Starts a Console process without linking.
+
+  Use this when the caller will monitor the process and handle crashes
+  independently (e.g., Container GenServer that needs to restart consoles).
+  """
+  @spec start(keyword()) :: GenServer.on_start()
+  def start(opts) do
+    GenServer.start(__MODULE__, opts)
+  end
+
+  @doc """
   Sends a command to the console.
 
   Returns `{:ok, command_id}` if the command was accepted.

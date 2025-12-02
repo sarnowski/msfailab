@@ -1,10 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Skill(debugging-runtime)",
+      "Skill(debugging)",
+      "Skill(development)",
       "Skill(finishing-work)",
-      "Skill(prompt-engineering)",
-      "Skill(writing-tests)",
 
       "Bash(mix:*)",
       "Bash(PRINT_LOGS=true mix:*)",
@@ -48,6 +47,7 @@
       "WebFetch(domain:platform.claude.com)",
       "WebFetch(domain:ollama.com)",
       "WebFetch(domain:docs.ollama.com)",
+      "WebFetch(domain:docs.docker.com)",
       "WebFetch(domain:daisyui.com)"
     ]
   },

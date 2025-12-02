@@ -1,6 +1,11 @@
 # msfailab Configuration
-# Copy this file to .env and edit as needed.
-# Docker Compose automatically loads .env from the current directory.
+#
+# For pre-built releases (OCI):
+#   Copy to msfailab.conf and run:
+#   docker compose -f oci://ghcr.io/sarnowski/msfailab:latest --env-file msfailab.conf up
+#
+# For local builds or development:
+#   Copy to .env (Docker Compose auto-loads .env from the project directory)
 
 # =============================================================================
 # Security Configuration (REQUIRED for production)

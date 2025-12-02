@@ -186,3 +186,22 @@ If logs and inspection don't show the issue:
 - Ask the user to reproduce the problem
 - Ask them to describe exact steps and expected vs actual behavior
 - Watch `tail -f log/app.log log/events.log` while they reproduce
+
+## After Finding the Bug: STOP
+
+**This skill is for investigation only, not implementation.**
+
+Once you've identified the root cause:
+
+1. **Do NOT write the fix yet**
+2. **Invoke the `development` skill**
+3. Follow the Bug Fix workflow: write a failing test FIRST, then fix
+
+The correct flow is:
+```
+debugging (find the bug) → development (test + fix) → finishing-work (verify)
+```
+
+Common mistake: Jumping straight from "I found it!" to writing the fix. This skips the regression test that prevents the bug from recurring.
+
+**Exception:** If the fix is purely adding/modifying log statements with no behavioral changes, you can skip the development skill and go directly to finishing-work.

@@ -833,4 +833,165 @@ defmodule Msfailab.Containers.ContainerTest do
       refute Map.has_key?(snapshot.consoles, 42)
     end
   end
+
+  describe "console crash from token expiration" do
+    test "restarts console when it crashes from expired token" do
+      # Use very short keepalive interval to trigger crash faster
+      Application.put_env(:msfailab, :console_timing,
+        poll_interval_ms: 5,
+        keepalive_interval_ms: 10,
+        max_retries: 3,
+        retry_delays_ms: [5, 10, 20]
+      )
+
+      stub(DockerAdapterMock, :start_container, fn _name, _labels ->
+        {:ok, "crash_restart_container"}
+      end)
+
+      stub(DockerAdapterMock, :get_rpc_endpoint, fn "crash_restart_container" ->
+        {:ok, %{host: "localhost", port: 55_553}}
+      end)
+
+      # Track different types of MSGRPC calls
+      console_start_count = :counters.new(1, [:atomics])
+
+      # Logins: always succeed
+      stub(MsgrpcClientMock, :login, fn _, _, _ ->
+        {:ok, "test-token"}
+      end)
+
+      # Console create always succeeds
+      stub(MsgrpcClientMock, :console_create, fn _, _ ->
+        :counters.add(console_start_count, 1, 1)
+        count = :counters.get(console_start_count, 1)
+        {:ok, %{"id" => "console_#{count}"}}
+      end)
+
+      # Console read: first few succeed, then fails (simulating token expiration)
+      read_count = :counters.new(1, [:atomics])
+
+      stub(MsgrpcClientMock, :console_read, fn _, _, _ ->
+        :counters.add(read_count, 1, 1)
+        count = :counters.get(read_count, 1)
+
+        if count <= 3 do
+          # Initial reads succeed - Console reaches :ready state
+          {:ok, %{"data" => "msf6 > ", "prompt" => "msf6 > ", "busy" => false}}
+        else
+          # After ready, keepalive reads fail (token expired)
+          {:error, {:console_read_failed, "Invalid token"}}
+        end
+      end)
+
+      _pid =
+        start_supervised!(
+          {Container,
+           container_record_id: 3001,
+           workspace_id: 1,
+           workspace_slug: "ws",
+           container_slug: "container",
+           container_name: "Test Container",
+           docker_image: "test:latest",
+           auto_start: true}
+        )
+
+      # Wait for Container to reach :running
+      Process.sleep(30)
+      assert {:running, _} = Container.get_status(3001)
+
+      # Register console - this triggers spawn_console
+      assert :ok = Container.register_console(3001, 42)
+
+      # Wait for Console to start
+      Process.sleep(30)
+
+      # Capture state before crash
+      snapshot_before = Container.get_state_snapshot(3001)
+      console_info = Map.get(snapshot_before.consoles, 42)
+
+      assert console_info != nil, "Console should be tracked"
+      assert console_info.pid != nil, "Console should have a pid"
+      assert console_info.ref != nil, "Console should have a monitor ref"
+      assert Process.alive?(console_info.pid), "Console should be alive initially"
+
+      initial_console_starts = :counters.get(console_start_count, 1)
+      assert initial_console_starts >= 1, "Console should have started at least once"
+
+      # Wait for keepalive to trigger and Console to crash
+      # Keepalive interval is 10ms, plus retry delays (5+10+20=35ms)
+      Process.sleep(100)
+
+      # Console should have crashed by now
+      refute Process.alive?(console_info.pid), "Console should have crashed"
+
+      # Check container state after crash - track should still be registered
+      snapshot_after = Container.get_state_snapshot(3001)
+      assert MapSet.member?(snapshot_after.registered_tracks, 42)
+
+      # Wait for restart to complete
+      Process.sleep(100)
+
+      # Verify console was restarted (console_create was called again)
+      final_console_starts = :counters.get(console_start_count, 1)
+
+      assert final_console_starts > initial_console_starts,
+             "Console should have been restarted after crash. " <>
+               "Initial starts: #{initial_console_starts}, Final: #{final_console_starts}"
+
+      # Console should still be tracked
+      snapshot = Container.get_state_snapshot(3001)
+      assert MapSet.member?(snapshot.registered_tracks, 42)
+      assert Map.has_key?(snapshot.consoles, 42)
+    end
+
+    test "logs warning when console down but container not running" do
+      stub(DockerAdapterMock, :start_container, fn _name, _labels ->
+        {:ok, "logging_test_container"}
+      end)
+
+      stub(DockerAdapterMock, :get_rpc_endpoint, fn "logging_test_container" ->
+        {:ok, %{host: "localhost", port: 55_553}}
+      end)
+
+      # Container login succeeds
+      stub(MsgrpcClientMock, :login, fn _, _, _ ->
+        {:ok, "test-token"}
+      end)
+
+      stub(MsgrpcClientMock, :console_create, fn _, _ ->
+        {:ok, %{"id" => "console_1"}}
+      end)
+
+      # Console read fails immediately to trigger crash
+      stub(MsgrpcClientMock, :console_read, fn _, _, _ ->
+        {:error, {:console_read_failed, "Invalid token"}}
+      end)
+
+      _pid =
+        start_supervised!(
+          {Container,
+           container_record_id: 3002,
+           workspace_id: 1,
+           workspace_slug: "ws",
+           container_slug: "container",
+           container_name: "Test Container",
+           docker_image: "test:latest",
+           auto_start: true}
+        )
+
+      Process.sleep(30)
+      assert {:running, _} = Container.get_status(3002)
+
+      # Register console
+      assert :ok = Container.register_console(3002, 42)
+
+      # Wait for Console to crash
+      Process.sleep(50)
+
+      # Verify the Console was tracked in consoles map (even if restart is pending)
+      snapshot = Container.get_state_snapshot(3002)
+      # Track should still be registered
+      assert MapSet.member?(snapshot.registered_tracks, 42)
+    end
+  end
 end

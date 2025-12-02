@@ -931,8 +931,14 @@ defmodule Msfailab.Containers.Container do
   # Console restart timer
   def handle_info({:restart_console, track_id}, state) do
     if MapSet.member?(state.registered_tracks, track_id) && state.status == :running do
+      Logger.info("Executing console restart", track_id: track_id)
       {:noreply, spawn_console(state, track_id)}
     else
+      Logger.warning(
+        "Console restart skipped: track_registered=#{MapSet.member?(state.registered_tracks, track_id)}, status=#{state.status}",
+        track_id: track_id
+      )
+
       {:noreply, state}
     end
   end
@@ -1176,7 +1182,9 @@ defmodule Msfailab.Containers.Container do
           track_id: track_id
         ]
 
-        case Console.start_link(opts) do
+        # Use start (not start_link) to avoid linking - we monitor instead
+        # to handle console crashes gracefully and restart
+        case Console.start(opts) do
           {:ok, pid} ->
             ref = Process.monitor(pid)
 
@@ -1288,10 +1296,9 @@ defmodule Msfailab.Containers.Container do
         {:noreply, %{state | consoles: Map.delete(state.consoles, track_id)}}
       end
     else
-      Logger.debug("Console down but track not registered or container not running",
-        track_id: track_id,
-        registered: MapSet.member?(state.registered_tracks, track_id),
-        status: state.status
+      Logger.warning(
+        "Console down but cannot restart: track_registered=#{MapSet.member?(state.registered_tracks, track_id)}, status=#{state.status}",
+        track_id: track_id
       )
 
       {:noreply, %{state | consoles: Map.delete(state.consoles, track_id)}}
