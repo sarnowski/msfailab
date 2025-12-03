@@ -148,6 +148,73 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
       assert {:send_msf_command, "help"} in actions
     end
 
+    test "executes all parallel tools (bash_command) at once" do
+      tool_inv1 =
+        make_tool_invocation("call_1", "bash_command", :approved,
+          arguments: %{"command" => "ls -la"}
+        )
+
+      tool_inv2 =
+        make_tool_invocation("call_2", "bash_command", :approved,
+          arguments: %{"command" => "pwd"}
+        )
+
+      entry1 =
+        make_tool_entry(1, 1, "bash_command", :approved, arguments: %{"command" => "ls -la"})
+
+      entry2 = make_tool_entry(2, 2, "bash_command", :approved, arguments: %{"command" => "pwd"})
+
+      turn =
+        make_turn(
+          status: :executing_tools,
+          tool_invocations: %{1 => tool_inv1, 2 => tool_inv2}
+        )
+
+      console = make_console(status: :ready)
+      context = %{track_id: 1, model: "test", autonomous: false}
+
+      {new_turn, new_entries, actions} = Turn.reconcile(turn, console, [entry1, entry2], context)
+
+      # Both tools should be marked as executing
+      assert new_turn.tool_invocations[1].status == :executing
+      assert new_turn.tool_invocations[2].status == :executing
+      assert Enum.at(new_entries, 0).tool_status == :executing
+      assert Enum.at(new_entries, 1).tool_status == :executing
+
+      # Both bash commands should be sent
+      assert {:send_bash_command, 1, "ls -la"} in actions
+      assert {:send_bash_command, 2, "pwd"} in actions
+    end
+
+    test "executes parallel tools even when sequential tools exist" do
+      # When we have a mix of parallel and sequential tools,
+      # parallel tools can run while console is busy with sequential
+      sequential = make_tool_invocation("call_1", "msf_command", :executing)
+
+      parallel =
+        make_tool_invocation("call_2", "bash_command", :approved,
+          arguments: %{"command" => "echo hi"}
+        )
+
+      entry1 = make_tool_entry(1, 1, "msf_command", :executing)
+
+      entry2 =
+        make_tool_entry(2, 2, "bash_command", :approved, arguments: %{"command" => "echo hi"})
+
+      turn =
+        make_turn(status: :executing_tools, tool_invocations: %{1 => sequential, 2 => parallel})
+
+      console = make_console(status: :ready)
+      context = %{track_id: 1, model: "test", autonomous: false}
+
+      {new_turn, new_entries, actions} = Turn.reconcile(turn, console, [entry1, entry2], context)
+
+      # The parallel tool should be executed
+      assert new_turn.tool_invocations[2].status == :executing
+      assert Enum.at(new_entries, 1).tool_status == :executing
+      assert {:send_bash_command, 2, "echo hi"} in actions
+    end
+
     test "does not execute when console busy" do
       tool_inv = make_tool_invocation("call_1", "msf_command", :approved)
 
@@ -495,6 +562,35 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
 
       assert opts[:error_message] == "command not found"
       assert :reconcile in actions
+    end
+
+    test "handles nil started_at gracefully" do
+      # Test the nil started_at branch
+      tool_inv =
+        make_tool_invocation("call_1", "bash_command", :executing,
+          command_id: "bash-cmd-1",
+          started_at: nil
+        )
+
+      entry = make_tool_entry(1, 1, "bash_command", :executing)
+
+      turn =
+        make_turn(
+          status: :executing_tools,
+          tool_invocations: %{1 => tool_inv},
+          command_to_tool: %{"bash-cmd-1" => 1}
+        )
+
+      {new_turn, _new_entries, actions} =
+        Turn.error_bash_tool(turn, [entry], "bash-cmd-1", "error message")
+
+      assert new_turn.tool_invocations[1].status == :error
+
+      assert {:update_tool_status, 1, "error", opts} =
+               Enum.find(actions, &match?({:update_tool_status, _, "error", _}, &1))
+
+      # Duration should be 0 when started_at is nil
+      assert opts[:duration_ms] == 0
     end
 
     test "returns no_executing_tool when command_id not found" do

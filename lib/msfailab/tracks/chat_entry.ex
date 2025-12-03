@@ -140,22 +140,56 @@ defmodule Msfailab.Tracks.ChatEntry do
   @type message_type :: :prompt | :thinking | :response
   @type tool_status :: :pending | :approved | :denied | :executing | :success | :error | :timeout
 
+  @typedoc """
+  A chat entry representing either a message or a tool invocation.
+
+  This is a union type where `entry_type` determines which fields are populated:
+
+  ## Common Fields (always present)
+
+  | Field | Description |
+  |-------|-------------|
+  | `id` | UUID string (streaming) or integer (persisted) |
+  | `position` | Monotonic position in chat timeline |
+  | `entry_type` | `:message` or `:tool_invocation` |
+  | `timestamp` | When the entry was created |
+  | `streaming` | Whether the entry is still being streamed |
+
+  ## Message Fields (when `entry_type == :message`)
+
+  | Field | Description |
+  |-------|-------------|
+  | `role` | `:user` or `:assistant` |
+  | `message_type` | `:prompt`, `:thinking`, or `:response` |
+  | `content` | The message text content |
+  | `rendered_html` | Markdown-rendered HTML for display |
+
+  ## Tool Invocation Fields (when `entry_type == :tool_invocation`)
+
+  | Field | Description |
+  |-------|-------------|
+  | `tool_call_id` | LLM-assigned ID for correlating call/result |
+  | `tool_name` | `"msf_command"` or `"bash_command"` |
+  | `tool_arguments` | Map of arguments passed to the tool |
+  | `tool_status` | Lifecycle status (pending, approved, executing, etc.) |
+  | `console_prompt` | MSF console prompt at time of invocation |
+  | `result_content` | Tool execution output (nil until complete) |
+  """
   @type t :: %__MODULE__{
           # Common fields (all entry types)
-          # id can be a UUID string (streaming entries) or integer (persisted entries)
           id: String.t() | integer(),
           position: pos_integer(),
           entry_type: entry_type(),
           timestamp: DateTime.t(),
           streaming: boolean(),
 
-          # Message fields (entry_type: :message)
+          # Message fields (entry_type: :message) - nil for tool invocations
           role: role() | nil,
           message_type: message_type() | nil,
           content: String.t() | nil,
           rendered_html: String.t() | nil,
 
-          # Tool invocation fields (entry_type: :tool_invocation)
+          # Tool invocation fields (entry_type: :tool_invocation) - nil for messages
           tool_call_id: String.t() | nil,
           tool_name: String.t() | nil,
           tool_arguments: map() | nil,
@@ -166,20 +200,20 @@ defmodule Msfailab.Tracks.ChatEntry do
 
   @enforce_keys [:id, :position, :entry_type, :streaming, :timestamp]
   defstruct [
-    # Common fields
+    # Common fields (always present)
     :id,
     :position,
     :entry_type,
     :timestamp,
     :streaming,
 
-    # Message fields
+    # Message fields (nil for :tool_invocation entries)
     :role,
     :message_type,
     :content,
     :rendered_html,
 
-    # Tool invocation fields
+    # Tool invocation fields (nil for :message entries)
     :tool_call_id,
     :tool_name,
     :tool_arguments,
@@ -187,6 +221,64 @@ defmodule Msfailab.Tracks.ChatEntry do
     :console_prompt,
     :result_content
   ]
+
+  # ===========================================================================
+  # String to Atom Conversion (Safe Alternatives to String.to_existing_atom)
+  # ===========================================================================
+
+  @doc """
+  Converts a role string from the database to an atom.
+
+  ## Examples
+
+      iex> ChatEntry.role_to_atom("user")
+      :user
+
+      iex> ChatEntry.role_to_atom("assistant")
+      :assistant
+  """
+  @spec role_to_atom(String.t()) :: role()
+  def role_to_atom("user"), do: :user
+  def role_to_atom("assistant"), do: :assistant
+
+  @doc """
+  Converts a message_type string from the database to an atom.
+
+  ## Examples
+
+      iex> ChatEntry.message_type_to_atom("prompt")
+      :prompt
+
+      iex> ChatEntry.message_type_to_atom("thinking")
+      :thinking
+
+      iex> ChatEntry.message_type_to_atom("response")
+      :response
+  """
+  @spec message_type_to_atom(String.t()) :: message_type()
+  def message_type_to_atom("prompt"), do: :prompt
+  def message_type_to_atom("thinking"), do: :thinking
+  def message_type_to_atom("response"), do: :response
+
+  @doc """
+  Converts a tool_status string from the database to an atom.
+
+  ## Examples
+
+      iex> ChatEntry.tool_status_to_atom("pending")
+      :pending
+
+      iex> ChatEntry.tool_status_to_atom("success")
+      :success
+  """
+  @spec tool_status_to_atom(String.t()) :: tool_status()
+  def tool_status_to_atom("pending"), do: :pending
+  def tool_status_to_atom("approved"), do: :approved
+  def tool_status_to_atom("denied"), do: :denied
+  def tool_status_to_atom("executing"), do: :executing
+  def tool_status_to_atom("success"), do: :success
+  def tool_status_to_atom("error"), do: :error
+  def tool_status_to_atom("timeout"), do: :timeout
 
   # ===========================================================================
   # Message Entry Factory Functions
@@ -415,8 +507,8 @@ defmodule Msfailab.Tracks.ChatEntry do
       id: entry.id,
       position: entry.position,
       entry_type: :message,
-      role: String.to_existing_atom(entry.message.role),
-      message_type: String.to_existing_atom(entry.message.message_type),
+      role: role_to_atom(entry.message.role),
+      message_type: message_type_to_atom(entry.message.message_type),
       content: entry.message.content || "",
       rendered_html: nil,
       streaming: streaming,
@@ -448,7 +540,7 @@ defmodule Msfailab.Tracks.ChatEntry do
       tool_call_id: ti.tool_call_id,
       tool_name: ti.tool_name,
       tool_arguments: ti.arguments,
-      tool_status: String.to_existing_atom(ti.status),
+      tool_status: tool_status_to_atom(ti.status),
       console_prompt: ti.console_prompt || "",
       result_content: ti.result_content,
       streaming: false,

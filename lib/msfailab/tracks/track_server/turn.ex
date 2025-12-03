@@ -856,6 +856,8 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
     end
   end
 
+  @spec find_tool_by_command_id(TurnState.t(), String.t()) ::
+          {integer(), map()} | nil
   defp find_tool_by_command_id(turn, command_id) do
     case Map.get(turn.command_to_tool, command_id) do
       nil -> nil
@@ -867,6 +869,8 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
   # Private Helpers
   # ============================================================================
 
+  @spec execute_next_sequential_tool(TurnState.t(), ConsoleState.t(), [ChatEntry.t()], map()) ::
+          {TurnState.t(), [ChatEntry.t()], [action()]} | :no_action
   defp execute_next_sequential_tool(%TurnState{} = turn, _console, entries, _context) do
     # Find first approved sequential tool by position
     approved_tools =
@@ -885,6 +889,8 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
     end
   end
 
+  @spec execute_all_parallel_tools(TurnState.t(), [ChatEntry.t()]) ::
+          {TurnState.t(), [ChatEntry.t()], [action()]} | :no_action
   defp execute_all_parallel_tools(%TurnState{} = turn, entries) do
     # Find all approved parallel tools, sorted by position
     approved_parallel =
@@ -913,6 +919,7 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
     end
   end
 
+  @spec get_entry_position([ChatEntry.t()], integer()) :: integer()
   defp get_entry_position(entries, entry_id) do
     case Enum.find(entries, fn e -> e.id == entry_id or e.position == entry_id end) do
       nil -> 999_999
@@ -920,6 +927,8 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
     end
   end
 
+  @spec start_llm_request(TurnState.t(), [ChatEntry.t()], map()) ::
+          {TurnState.t(), [ChatEntry.t()], [action()]}
   defp start_llm_request(%TurnState{} = turn, entries, context) do
     track_id = context.track_id
     model = turn.model
@@ -937,6 +946,8 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
     {new_turn, entries, [{:start_llm, request}, :broadcast_chat_state]}
   end
 
+  @spec complete_turn(TurnState.t(), [ChatEntry.t()]) ::
+          {TurnState.t(), [ChatEntry.t()], [action()]}
   defp complete_turn(%TurnState{} = turn, entries) do
     Logger.info("Turn complete")
 
@@ -959,6 +970,7 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
     {new_turn, entries, actions}
   end
 
+  @spec build_llm_request(integer(), String.t(), map() | nil) :: ChatRequest.t()
   defp build_llm_request(track_id, model, cache_context) do
     # Load entries from DB for accurate LLM context
     entries = ChatContext.load_entries(track_id)
@@ -981,6 +993,8 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
     }
   end
 
+  @spec update_chat_entry_status([ChatEntry.t()], integer(), ChatEntry.tool_status(), keyword()) ::
+          [ChatEntry.t()]
   defp update_chat_entry_status(entries, entry_id, new_status, opts \\ []) do
     Enum.map(entries, fn entry ->
       if matches_tool_entry?(entry, entry_id),
@@ -989,10 +1003,12 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
     end)
   end
 
+  @spec matches_tool_entry?(ChatEntry.t(), integer()) :: boolean()
   defp matches_tool_entry?(entry, entry_id) do
     (entry.id == entry_id or entry.position == entry_id) and ChatEntry.tool_invocation?(entry)
   end
 
+  @spec apply_tool_update(ChatEntry.t(), ChatEntry.tool_status(), keyword()) :: ChatEntry.t()
   defp apply_tool_update(entry, new_status, opts) do
     entry = %{entry | tool_status: new_status}
 
@@ -1002,6 +1018,8 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
     end
   end
 
+  @spec find_executing_tool(TurnState.t(), String.t() | nil) ::
+          {integer(), map()} | nil
   defp find_executing_tool(turn, _command_id) do
     # Find any executing tool with a command_id
     Enum.find(turn.tool_invocations, fn {_id, ts} ->

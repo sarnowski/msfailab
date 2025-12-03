@@ -78,6 +78,7 @@ defmodule Msfailab.Tracks.TrackServer do
   alias Msfailab.LLM.Events, as: LLMEvents
   alias Msfailab.Tracks
   alias Msfailab.Tracks.ChatContext
+  alias Msfailab.Tracks.ChatEntry
   alias Msfailab.Tracks.ChatState
   alias Msfailab.Tracks.ConsoleHistoryBlock
   alias Msfailab.Tracks.TrackServer.Action
@@ -872,7 +873,7 @@ defmodule Msfailab.Tracks.TrackServer do
         tool_call_id: ti.tool_call_id,
         tool_name: ti.tool_name,
         arguments: ti.arguments || %{},
-        status: String.to_existing_atom(ti.status),
+        status: ChatEntry.tool_status_to_atom(ti.status),
         command_id: nil,
         started_at: nil
       }

@@ -195,6 +195,42 @@ defmodule Msfailab.Tracks.ChatEntryTest do
     end
   end
 
+  describe "role_to_atom/1" do
+    test "converts user role" do
+      assert ChatEntry.role_to_atom("user") == :user
+    end
+
+    test "converts assistant role" do
+      assert ChatEntry.role_to_atom("assistant") == :assistant
+    end
+  end
+
+  describe "message_type_to_atom/1" do
+    test "converts prompt message type" do
+      assert ChatEntry.message_type_to_atom("prompt") == :prompt
+    end
+
+    test "converts thinking message type" do
+      assert ChatEntry.message_type_to_atom("thinking") == :thinking
+    end
+
+    test "converts response message type" do
+      assert ChatEntry.message_type_to_atom("response") == :response
+    end
+  end
+
+  describe "tool_status_to_atom/1" do
+    test "converts all valid statuses" do
+      assert ChatEntry.tool_status_to_atom("pending") == :pending
+      assert ChatEntry.tool_status_to_atom("approved") == :approved
+      assert ChatEntry.tool_status_to_atom("denied") == :denied
+      assert ChatEntry.tool_status_to_atom("executing") == :executing
+      assert ChatEntry.tool_status_to_atom("success") == :success
+      assert ChatEntry.tool_status_to_atom("error") == :error
+      assert ChatEntry.tool_status_to_atom("timeout") == :timeout
+    end
+  end
+
   describe "struct enforcement" do
     test "requires enforce_keys" do
       assert_raise ArgumentError, ~r/the following keys must also be given/, fn ->
@@ -245,6 +281,127 @@ defmodule Msfailab.Tracks.ChatEntryTest do
       assert chat_entry.tool_status == :pending
       assert chat_entry.console_prompt == "msf6 > "
       assert chat_entry.streaming == false
+    end
+
+    test "converts all valid tool statuses" do
+      for status <- ["pending", "approved", "denied", "executing", "success", "error", "timeout"] do
+        ecto_entry = %Msfailab.Tracks.ChatHistoryEntry{
+          id: 1,
+          position: 1,
+          entry_type: "tool_invocation",
+          inserted_at: ~U[2025-01-15 10:30:00Z],
+          tool_invocation: %Msfailab.Tracks.ChatToolInvocation{
+            tool_call_id: "call",
+            tool_name: "tool",
+            arguments: %{},
+            status: status,
+            console_prompt: ""
+          }
+        }
+
+        chat_entry = ChatEntry.from_tool_invocation_ecto(ecto_entry)
+        assert chat_entry.tool_status == String.to_atom(status)
+      end
+    end
+  end
+
+  describe "from_ecto/2" do
+    test "converts user prompt entry" do
+      ecto_entry = %Msfailab.Tracks.ChatHistoryEntry{
+        id: 1,
+        position: 1,
+        entry_type: "message",
+        inserted_at: ~U[2025-01-15 10:30:00Z],
+        message: %Msfailab.Tracks.ChatMessage{
+          role: "user",
+          message_type: "prompt",
+          content: "Hello, world!"
+        }
+      }
+
+      chat_entry = ChatEntry.from_ecto(ecto_entry)
+
+      assert chat_entry.id == 1
+      assert chat_entry.position == 1
+      assert chat_entry.entry_type == :message
+      assert chat_entry.role == :user
+      assert chat_entry.message_type == :prompt
+      assert chat_entry.content == "Hello, world!"
+      assert chat_entry.streaming == false
+    end
+
+    test "converts assistant thinking entry" do
+      ecto_entry = %Msfailab.Tracks.ChatHistoryEntry{
+        id: 2,
+        position: 2,
+        entry_type: "message",
+        inserted_at: ~U[2025-01-15 10:30:00Z],
+        message: %Msfailab.Tracks.ChatMessage{
+          role: "assistant",
+          message_type: "thinking",
+          content: "Let me analyze..."
+        }
+      }
+
+      chat_entry = ChatEntry.from_ecto(ecto_entry)
+
+      assert chat_entry.role == :assistant
+      assert chat_entry.message_type == :thinking
+    end
+
+    test "converts assistant response entry" do
+      ecto_entry = %Msfailab.Tracks.ChatHistoryEntry{
+        id: 3,
+        position: 3,
+        entry_type: "message",
+        inserted_at: ~U[2025-01-15 10:30:00Z],
+        message: %Msfailab.Tracks.ChatMessage{
+          role: "assistant",
+          message_type: "response",
+          content: "Here is my answer"
+        }
+      }
+
+      chat_entry = ChatEntry.from_ecto(ecto_entry)
+
+      assert chat_entry.role == :assistant
+      assert chat_entry.message_type == :response
+    end
+
+    test "passes streaming flag through" do
+      ecto_entry = %Msfailab.Tracks.ChatHistoryEntry{
+        id: 1,
+        position: 1,
+        entry_type: "message",
+        inserted_at: ~U[2025-01-15 10:30:00Z],
+        message: %Msfailab.Tracks.ChatMessage{
+          role: "assistant",
+          message_type: "response",
+          content: "Streaming..."
+        }
+      }
+
+      chat_entry = ChatEntry.from_ecto(ecto_entry, true)
+
+      assert chat_entry.streaming == true
+    end
+
+    test "handles nil content as empty string" do
+      ecto_entry = %Msfailab.Tracks.ChatHistoryEntry{
+        id: 1,
+        position: 1,
+        entry_type: "message",
+        inserted_at: ~U[2025-01-15 10:30:00Z],
+        message: %Msfailab.Tracks.ChatMessage{
+          role: "assistant",
+          message_type: "response",
+          content: nil
+        }
+      }
+
+      chat_entry = ChatEntry.from_ecto(ecto_entry)
+
+      assert chat_entry.content == ""
     end
   end
 end
