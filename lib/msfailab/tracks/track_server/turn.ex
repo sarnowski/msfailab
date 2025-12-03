@@ -71,6 +71,7 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
   alias Msfailab.LLM.ChatRequest
   alias Msfailab.LLM.Events, as: LLMEvents
   alias Msfailab.Tools
+  alias Msfailab.Tools.MsfDataExecutor
   alias Msfailab.Tracks.ChatContext
   alias Msfailab.Tracks.ChatEntry
   alias Msfailab.Tracks.TrackServer.State.Console, as: ConsoleState
@@ -127,7 +128,7 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
         execute_next_sequential_tool(turn, console, entries, context)
 
       should_execute_parallel_tools?(turn) ->
-        execute_all_parallel_tools(turn, entries)
+        execute_all_parallel_tools(turn, entries, context)
 
       should_start_next_llm_request?(turn) ->
         start_llm_request(turn, entries, context)
@@ -316,14 +317,20 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
     autonomous = context.autonomous
     console_prompt = context.current_prompt
 
-    # Determine initial status based on autonomous mode
-    initial_status = if autonomous, do: :approved, else: :pending
-    initial_status_str = if autonomous, do: "approved", else: "pending"
+    # Determine initial status based on tool's approval_required flag and autonomous mode
+    # 1. Tools with approval_required: false are auto-approved regardless of mode
+    # 2. In autonomous mode, all tools are auto-approved
+    # 3. Unknown tools default to requiring approval (safe default)
+    {initial_status, initial_status_str} = determine_initial_approval(tc.name, autonomous)
 
     Logger.info("LLM tool call received: #{tc.name}")
 
-    if autonomous do
-      Logger.info("Auto-approving tool in autonomous mode: #{tc.name}")
+    if initial_status == :approved and not autonomous do
+      Logger.info("Auto-approving tool (approval not required): #{tc.name}")
+    else
+      if autonomous do
+        Logger.info("Auto-approving tool in autonomous mode: #{tc.name}")
+      end
     end
 
     # Create UI entry (with temporary ID - will be replaced after persist)
@@ -559,14 +566,15 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
   - `turn` - Current turn state
   - `entries` - Current chat entries
   - `entry_id` - The entry ID of the tool to execute
+  - `context` - Context with workspace_slug for MSF data tools
 
   ## Returns
 
   `{new_turn, new_entries, actions}`
   """
-  @spec start_tool_execution(TurnState.t(), [ChatEntry.t()], integer()) ::
+  @spec start_tool_execution(TurnState.t(), [ChatEntry.t()], integer(), map()) ::
           {TurnState.t(), [ChatEntry.t()], [action()]}
-  def start_tool_execution(%TurnState{} = turn, entries, entry_id) do
+  def start_tool_execution(%TurnState{} = turn, entries, entry_id, context) do
     case Map.get(turn.tool_invocations, entry_id) do
       %{tool_name: "msf_command", arguments: args} = tool_state ->
         command = Map.get(args, "command", "")
@@ -618,11 +626,81 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
 
         {new_turn, new_entries, actions}
 
-      tool_state when tool_state != nil ->
-        # Unknown tool type
-        Logger.error("Unknown tool type: #{tool_state.tool_name}")
+      %{tool_name: tool_name} = tool_state when tool_state != nil ->
+        # Check if this is an MSF data tool (executes synchronously)
+        if MsfDataExecutor.handles_tool?(tool_name) do
+          execute_msf_data_tool(turn, entries, entry_id, tool_state, context)
+        else
+          # Unknown tool type
+          Logger.error("Unknown tool type: #{tool_name}")
 
-        new_tool_state = %{tool_state | status: :error}
+          new_tool_state = %{tool_state | status: :error}
+
+          new_turn = %TurnState{
+            turn
+            | tool_invocations: Map.put(turn.tool_invocations, entry_id, new_tool_state)
+          }
+
+          new_entries = update_chat_entry_status(entries, entry_id, :error)
+
+          actions = [
+            {:update_tool_status, entry_id, "error",
+             [error_message: "Unknown tool: #{tool_name}", duration_ms: 0]},
+            :broadcast_chat_state
+          ]
+
+          {new_turn, new_entries, actions}
+        end
+
+      nil ->
+        {turn, entries, []}
+    end
+  end
+
+  # Executes MSF data tools synchronously and returns results immediately
+  @spec execute_msf_data_tool(TurnState.t(), [ChatEntry.t()], integer(), map(), map()) ::
+          {TurnState.t(), [ChatEntry.t()], [action()]}
+  defp execute_msf_data_tool(%TurnState{} = turn, entries, entry_id, tool_state, context) do
+    started_at = DateTime.utc_now()
+    workspace_slug = context.workspace_slug
+
+    executor_context = %{workspace_slug: workspace_slug}
+
+    case MsfDataExecutor.execute(tool_state.tool_name, tool_state.arguments, executor_context) do
+      {:ok, result} ->
+        duration = DateTime.diff(DateTime.utc_now(), started_at, :millisecond)
+        result_content = Jason.encode!(result, pretty: true)
+
+        Logger.info(
+          "MSF data tool complete: #{tool_state.tool_name} (#{duration}ms, #{String.length(result_content)} bytes)"
+        )
+
+        new_tool_state = %{tool_state | status: :success, started_at: started_at}
+
+        new_turn = %TurnState{
+          turn
+          | tool_invocations: Map.put(turn.tool_invocations, entry_id, new_tool_state)
+        }
+
+        new_entries =
+          update_chat_entry_status(entries, entry_id, :success, result_content: result_content)
+
+        actions = [
+          {:update_tool_status, entry_id, "success",
+           [result_content: result_content, duration_ms: duration]},
+          :reconcile,
+          :broadcast_chat_state
+        ]
+
+        {new_turn, new_entries, actions}
+
+      {:error, reason} ->
+        duration = DateTime.diff(DateTime.utc_now(), started_at, :millisecond)
+        error_message = format_msf_data_error(reason)
+
+        Logger.warning("MSF data tool failed: #{tool_state.tool_name} - #{error_message}")
+
+        new_tool_state = %{tool_state | status: :error, started_at: started_at}
 
         new_turn = %TurnState{
           turn
@@ -633,16 +711,24 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
 
         actions = [
           {:update_tool_status, entry_id, "error",
-           [error_message: "Unknown tool: #{tool_state.tool_name}", duration_ms: 0]},
+           [error_message: error_message, duration_ms: duration]},
+          :reconcile,
           :broadcast_chat_state
         ]
 
         {new_turn, new_entries, actions}
-
-      nil ->
-        {turn, entries, []}
     end
   end
+
+  defp format_msf_data_error(:workspace_not_found), do: "Workspace not found"
+  defp format_msf_data_error(:host_not_found), do: "Host not found"
+  defp format_msf_data_error(:loot_not_found), do: "Loot not found"
+  defp format_msf_data_error({:unknown_tool, name}), do: "Unknown tool: #{name}"
+
+  defp format_msf_data_error({:validation_error, errors}),
+    do: "Validation error: #{inspect(errors)}"
+
+  defp format_msf_data_error(reason), do: inspect(reason)
 
   @doc """
   Completes a tool execution.
@@ -871,7 +957,7 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
 
   @spec execute_next_sequential_tool(TurnState.t(), ConsoleState.t(), [ChatEntry.t()], map()) ::
           {TurnState.t(), [ChatEntry.t()], [action()]} | :no_action
-  defp execute_next_sequential_tool(%TurnState{} = turn, _console, entries, _context) do
+  defp execute_next_sequential_tool(%TurnState{} = turn, _console, entries, context) do
     # Find first approved sequential tool by position
     approved_tools =
       turn.tool_invocations
@@ -882,16 +968,16 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
 
     case approved_tools do
       [{entry_id, _tool_state} | _] ->
-        start_tool_execution(turn, entries, entry_id)
+        start_tool_execution(turn, entries, entry_id, context)
 
       [] ->
         :no_action
     end
   end
 
-  @spec execute_all_parallel_tools(TurnState.t(), [ChatEntry.t()]) ::
+  @spec execute_all_parallel_tools(TurnState.t(), [ChatEntry.t()], map()) ::
           {TurnState.t(), [ChatEntry.t()], [action()]} | :no_action
-  defp execute_all_parallel_tools(%TurnState{} = turn, entries) do
+  defp execute_all_parallel_tools(%TurnState{} = turn, entries, context) do
     # Find all approved parallel tools, sorted by position
     approved_parallel =
       turn.tool_invocations
@@ -910,7 +996,7 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
           Enum.reduce(tools, {turn, entries, []}, fn {entry_id, _},
                                                      {acc_turn, acc_entries, acc_actions} ->
             {new_turn, new_entries, actions} =
-              start_tool_execution(acc_turn, acc_entries, entry_id)
+              start_tool_execution(acc_turn, acc_entries, entry_id, context)
 
             {new_turn, new_entries, acc_actions ++ actions}
           end)
@@ -1025,5 +1111,28 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
     Enum.find(turn.tool_invocations, fn {_id, ts} ->
       ts.status == :executing and ts.command_id != nil
     end)
+  end
+
+  @spec determine_initial_approval(String.t(), boolean()) :: {atom(), String.t()}
+  defp determine_initial_approval(tool_name, autonomous) do
+    case Tools.get_tool(tool_name) do
+      {:ok, tool} ->
+        cond do
+          # Tool doesn't require approval - always auto-approve
+          not tool.approval_required -> {:approved, "approved"}
+          # Autonomous mode - auto-approve
+          autonomous -> {:approved, "approved"}
+          # Needs user approval
+          true -> {:pending, "pending"}
+        end
+
+      {:error, :not_found} ->
+        # Unknown tools default to requiring approval (safe default)
+        if autonomous do
+          {:approved, "approved"}
+        else
+          {:pending, "pending"}
+        end
+    end
   end
 end

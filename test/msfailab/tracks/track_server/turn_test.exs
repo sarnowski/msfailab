@@ -383,7 +383,9 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
   # Tool Execution Tests
   # ===========================================================================
 
-  describe "start_tool_execution/3" do
+  describe "start_tool_execution/4" do
+    @context %{workspace_slug: "test-workspace"}
+
     test "starts execution for msf_command tool" do
       tool_inv =
         make_tool_invocation("call_1", "msf_command", :approved,
@@ -394,7 +396,7 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
 
       turn = make_turn(status: :executing_tools, tool_invocations: %{1 => tool_inv})
 
-      {new_turn, new_entries, actions} = Turn.start_tool_execution(turn, [entry], 1)
+      {new_turn, new_entries, actions} = Turn.start_tool_execution(turn, [entry], 1, @context)
 
       assert new_turn.tool_invocations[1].status == :executing
       assert new_turn.tool_invocations[1].started_at != nil
@@ -409,7 +411,7 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
 
       turn = make_turn(status: :executing_tools, tool_invocations: %{1 => tool_inv})
 
-      {_new_turn, _new_entries, actions} = Turn.start_tool_execution(turn, [entry], 1)
+      {_new_turn, _new_entries, actions} = Turn.start_tool_execution(turn, [entry], 1, @context)
 
       # Should use empty string as default
       assert {:send_msf_command, ""} in actions
@@ -421,7 +423,7 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
 
       turn = make_turn(tool_invocations: %{1 => tool_inv})
 
-      {new_turn, new_entries, actions} = Turn.start_tool_execution(turn, [entry], 1)
+      {new_turn, new_entries, actions} = Turn.start_tool_execution(turn, [entry], 1, @context)
 
       assert new_turn.tool_invocations[1].status == :error
       assert Enum.at(new_entries, 0).tool_status == :error
@@ -435,7 +437,7 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
     test "returns unchanged state for unknown entry_id" do
       turn = make_turn(tool_invocations: %{})
 
-      {new_turn, new_entries, actions} = Turn.start_tool_execution(turn, [], 999)
+      {new_turn, new_entries, actions} = Turn.start_tool_execution(turn, [], 999, @context)
 
       assert new_turn == turn
       assert new_entries == []
@@ -708,6 +710,85 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
 
       assert {:persist_tool_invocation, 42, "turn-123", 1, attrs} = Enum.at(actions, 0)
       assert attrs.status == "approved"
+    end
+
+    # Tests for approval_required behavior
+    test "auto-approves tool with approval_required: false in non-autonomous mode" do
+      # Tools like list_hosts have approval_required: false and should
+      # auto-approve even when not in autonomous mode
+      turn = make_turn(status: :streaming, turn_id: "turn-123")
+      stream = StreamState.new(1)
+      entries = []
+
+      tool_call = %LLMEvents.ToolCall{
+        id: "call_abc",
+        name: "list_hosts",
+        arguments: %{}
+      }
+
+      context = %{track_id: 42, autonomous: false, current_prompt: "msf6 >"}
+
+      {new_turn, _new_stream, new_entries, actions} =
+        Turn.handle_tool_call(turn, stream, entries, tool_call, context)
+
+      # Should be auto-approved because approval_required: false
+      assert new_turn.tool_invocations[1].status == :approved
+      assert [entry] = new_entries
+      assert entry.tool_status == :approved
+
+      assert {:persist_tool_invocation, 42, "turn-123", 1, attrs} = Enum.at(actions, 0)
+      assert attrs.status == "approved"
+    end
+
+    test "auto-approves tool with approval_required: false in autonomous mode" do
+      turn = make_turn(status: :streaming, turn_id: "turn-123")
+      stream = StreamState.new(1)
+      entries = []
+
+      tool_call = %LLMEvents.ToolCall{
+        id: "call_abc",
+        name: "list_hosts",
+        arguments: %{}
+      }
+
+      context = %{track_id: 42, autonomous: true, current_prompt: "msf6 >"}
+
+      {new_turn, _new_stream, new_entries, actions} =
+        Turn.handle_tool_call(turn, stream, entries, tool_call, context)
+
+      # Should be auto-approved in both cases
+      assert new_turn.tool_invocations[1].status == :approved
+      assert [entry] = new_entries
+      assert entry.tool_status == :approved
+
+      assert {:persist_tool_invocation, 42, "turn-123", 1, attrs} = Enum.at(actions, 0)
+      assert attrs.status == "approved"
+    end
+
+    test "requires approval for unknown tools in non-autonomous mode" do
+      # Unknown tools should default to requiring approval for safety
+      turn = make_turn(status: :streaming, turn_id: "turn-123")
+      stream = StreamState.new(1)
+      entries = []
+
+      tool_call = %LLMEvents.ToolCall{
+        id: "call_abc",
+        name: "unknown_future_tool",
+        arguments: %{}
+      }
+
+      context = %{track_id: 42, autonomous: false, current_prompt: "msf6 >"}
+
+      {new_turn, _new_stream, new_entries, actions} =
+        Turn.handle_tool_call(turn, stream, entries, tool_call, context)
+
+      # Should require approval since tool is unknown (safe default)
+      assert new_turn.tool_invocations[1].status == :pending
+      assert [entry] = new_entries
+      assert entry.tool_status == :pending
+
+      assert {:persist_tool_invocation, 42, "turn-123", 1, attrs} = Enum.at(actions, 0)
+      assert attrs.status == "pending"
     end
   end
 

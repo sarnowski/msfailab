@@ -1,6 +1,6 @@
 ---
 name: finishing-work
-description: "STOP. Did you modify ANY files? Invoke this BEFORE telling user 'done'. Mandatory completion ritual: runs precommit checks + records changes to PENDING.md. Skipping = broken commits. Use when: task complete, user says 'done'/'commit'/'looks good', switching topics, or session ending."
+description: "STOP. Did you modify ANY files? Invoke this BEFORE telling user 'done'. Applies to ALL file types: code, config, docs, markdown, skills, workflows—everything. Records changes to PENDING.md (always) + runs precommit (for code). Use when: task complete, user says 'done'/'commit'/'looks good', switching topics, or session ending."
 ---
 
 # Finishing Work

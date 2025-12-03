@@ -1,6 +1,6 @@
 ---
 name: debugging
-description: "STOP guessing. Investigate systematically. Use when: user reports an issue or bug, says 'doesn't work'/'broken'/'error'/'failed', investigating test failures, analyzing unexpected behavior, tracking down root causes, verifying fixes. Covers: logs, Docker, database, browser automation, and debugging strategy."
+description: "STOP guessing. Investigate systematically. Use when: user reports an issue or bug, says 'doesn't work'/'broken'/'error'/'failed', investigating test failures, analyzing unexpected behavior, tracking down root causes, verifying fixes. Covers: logs, Docker, database, and debugging strategy."
 ---
 
 # Debugging
@@ -22,7 +22,7 @@ Before diving into tools, establish the facts:
 |---------|------------|
 | "It doesn't work" | Ask user for exact error/behavior, check `log/app.log` |
 | Test failure | Read the failure message, check test setup, run with `PRINT_LOGS=true` |
-| UI not updating | Check `log/events.log` for PubSub, browser console for JS errors |
+| UI not updating | Check `log/events.log` for PubSub events, verify backend state |
 | Container issues | `docker ps`, `docker logs`, check container state |
 | Data looks wrong | Query database directly, trace the write path in logs |
 | Intermittent failure | Look for race conditions, check timing, add logging |
@@ -90,95 +90,12 @@ SELECT * FROM workspaces;
 SELECT * FROM tracks WHERE workspace_id = '...';
 ```
 
-### Frontend (Browser Automation)
-
-The development server runs at `http://localhost:4000` with no authentication. Use the Playwright MCP for full browser automation to observe and interact with the LiveView frontend.
-
-#### When to Use Browser Automation
-
-- Verify UI state matches expected behavior
-- Reproduce user-reported issues step by step
-- Trigger actions to observe their effects in logs
-- Check if LiveView updates reflect backend changes
-- Test form submissions and navigation flows
-
-#### Core Workflow
-
-Playwright MCP uses accessibility snapshots (not screenshots). Elements are identified by `ref` attributes.
-
-1. **Navigate and wait** (always wait after navigation):
-   ```
-   mcp__playwright__browser_navigate(url: "http://localhost:4000/workspace-name")
-   mcp__playwright__browser_wait_for(time: 2)  # Wait for LiveView to mount
-   ```
-
-2. **Take a snapshot** (preferred over screenshots):
-   ```
-   mcp__playwright__browser_snapshot()
-   ```
-   Returns accessibility tree with element refs like `ref="link[2]"`, `ref="button[5]"`
-
-3. **Interact using refs from the snapshot**:
-   ```
-   mcp__playwright__browser_click(element: "Start Track button", ref: "button[3]")
-   mcp__playwright__browser_type(element: "Track name input", ref: "textbox[1]", text: "recon")
-   ```
-
-4. **Wait and snapshot again** after interactions:
-   ```
-   mcp__playwright__browser_wait_for(time: 1)  # Wait for LiveView update
-   mcp__playwright__browser_snapshot()
-   ```
-
-5. **Monitor for errors**:
-   ```
-   mcp__playwright__browser_network_requests()   # See HTTP requests
-   mcp__playwright__browser_console_messages()   # See JS console output
-   mcp__playwright__browser_console_messages(onlyErrors: true)  # JS errors only
-   ```
-
-#### Best Practices
-
-- **Always wait after navigation** - Skipping this causes incomplete snapshots
-- **Always snapshot before interacting** - Refs change when page updates (stale refs fail)
-- **Use descriptive `element` parameters** - Helps with permission prompts
-- **Combine with log tailing** - Run `tail -f log/app.log log/events.log` while browsing
-- **Close browser when done** - `mcp__playwright__browser_close()` to free resources
-
-#### Form Interaction
-
-Use `browser_fill_form` for multiple fields at once:
-```
-mcp__playwright__browser_fill_form(fields: [
-  {name: "Name field", type: "textbox", ref: "textbox[1]", value: "test-workspace"},
-  {name: "Description", type: "textbox", ref: "textbox[2]", value: "Testing"}
-])
-```
-
-#### Troubleshooting
-
-| Issue | Cause | Fix |
-|-------|-------|-----|
-| Empty/huge snapshot | No wait after navigate | Add `browser_wait_for(time: 2)` |
-| Stale element error | Using old refs | Call `browser_snapshot()` before each interaction |
-| Click does nothing | LiveView still processing | Increase wait time after action |
-| Missing elements | Page not fully loaded | Wait longer, check for expected text |
-
-#### Quick Content Check (Alternative)
-
-For simple checks without full browser session, use WebFetch:
-```
-WebFetch(url: "http://localhost:4000/", prompt: "Check if page loads correctly")
-```
-
 ## Investigation Checklist
 
 1. **Check logs first** - Most issues leave traces in `app.log` or `events.log`
 2. **Verify container state** - Use `docker ps` to confirm expected containers are running
 3. **Query database** - Verify data state matches expectations
-4. **Observe frontend** - Use Playwright to navigate, interact, and verify UI state
-5. **Integrated debugging** - Tail logs while using browser automation to correlate UI actions with backend events
-6. **Ask user to reproduce** - If above methods don't reveal the issue, ask the user to trigger it while you watch logs
+4. **Ask user to reproduce** - If above methods don't reveal the issue, ask the user to trigger it while you watch logs
 
 ## When to Ask the User
 

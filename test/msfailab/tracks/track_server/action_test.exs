@@ -40,6 +40,7 @@ defmodule Msfailab.Tracks.TrackServer.ActionTest do
     %State{
       track_id: Keyword.get(attrs, :track_id, 1),
       workspace_id: Keyword.get(attrs, :workspace_id, 1),
+      workspace_slug: Keyword.get(attrs, :workspace_slug, "test-workspace"),
       container_id: Keyword.get(attrs, :container_id, 1),
       autonomous: Keyword.get(attrs, :autonomous, false),
       console: Keyword.get(attrs, :console, ConsoleState.new()),

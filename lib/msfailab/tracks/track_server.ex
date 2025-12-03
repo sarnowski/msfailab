@@ -86,6 +86,7 @@ defmodule Msfailab.Tracks.TrackServer do
   alias Msfailab.Tracks.TrackServer.State
   alias Msfailab.Tracks.TrackServer.Stream
   alias Msfailab.Tracks.TrackServer.Turn
+  alias Msfailab.Workspaces
 
   @typedoc "Console status"
   @type console_status :: :offline | :starting | :ready | :busy
@@ -269,6 +270,9 @@ defmodule Msfailab.Tracks.TrackServer do
       container_id: container_id
     )
 
+    # Load workspace to get slug (needed for MSF data tool scoping)
+    workspace = Workspaces.get_workspace!(workspace_id)
+
     # Load track settings from database
     track = Tracks.get_track(track_id)
     autonomous = if track, do: track.autonomous, else: false
@@ -295,7 +299,12 @@ defmodule Msfailab.Tracks.TrackServer do
     # Create initial state using the State module
     state =
       State.from_persisted(
-        %{track_id: track_id, workspace_id: workspace_id, container_id: container_id},
+        %{
+          track_id: track_id,
+          workspace_id: workspace_id,
+          workspace_slug: workspace.slug,
+          container_id: container_id
+        },
         autonomous: autonomous,
         console_history: persisted_history,
         chat_entries: chat_entries,
@@ -836,7 +845,8 @@ defmodule Msfailab.Tracks.TrackServer do
     context = %{
       track_id: state.track_id,
       model: state.turn.model,
-      autonomous: state.autonomous
+      autonomous: state.autonomous,
+      workspace_slug: state.workspace_slug
     }
 
     case Turn.reconcile(state.turn, state.console, state.chat_entries, context) do

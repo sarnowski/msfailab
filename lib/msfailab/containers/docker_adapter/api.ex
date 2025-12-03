@@ -64,7 +64,7 @@ defmodule Msfailab.Containers.DockerAdapter.Api do
         "Tty" => true,
         "OpenStdin" => true,
         "StdinOnce" => false,
-        "Cmd" => build_msf_command(rpc_port),
+        "Cmd" => build_msf_command(rpc_port, labels["msfailab.workspace_slug"]),
         "ExposedPorts" => %{"#{rpc_port}/tcp" => %{}},
         "HostConfig" => build_host_config(network, rpc_port, rpc_mode)
       }
@@ -87,13 +87,14 @@ defmodule Msfailab.Containers.DockerAdapter.Api do
     end
   end
 
-  defp build_msf_command(rpc_port) do
+  defp build_msf_command(rpc_port, workspace_slug) do
     db_url = Application.get_env(:msfailab, :msf_db_url)
     rpc_pass = Application.get_env(:msfailab, :msf_rpc_pass, "secret")
 
-    # Start msfconsole, connect to database, load msgrpc plugin
+    # Start msfconsole, connect to database, switch workspace, load msgrpc plugin
+    # The workspace -a command creates the workspace if it doesn't exist, then switches to it
     msf_commands =
-      "db_connect #{db_url}; load msgrpc ServerHost=0.0.0.0 ServerPort=#{rpc_port} Pass=#{rpc_pass}"
+      "db_connect #{db_url}; workspace -a #{workspace_slug}; load msgrpc ServerHost=0.0.0.0 ServerPort=#{rpc_port} Pass=#{rpc_pass}"
 
     ["msfconsole", "-x", msf_commands]
   end

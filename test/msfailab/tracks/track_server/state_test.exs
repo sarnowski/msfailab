@@ -222,12 +222,13 @@ defmodule Msfailab.Tracks.TrackServer.StateTest do
     end
   end
 
-  describe "State.new/4" do
+  describe "State.new/5" do
     test "creates state with required IDs and defaults" do
-      state = State.new(1, 2, 3)
+      state = State.new(1, 2, "test-workspace", 3)
 
       assert state.track_id == 1
       assert state.workspace_id == 2
+      assert state.workspace_slug == "test-workspace"
       assert state.container_id == 3
       assert state.autonomous == false
       assert %Console{} = state.console
@@ -237,7 +238,7 @@ defmodule Msfailab.Tracks.TrackServer.StateTest do
     end
 
     test "respects autonomous option" do
-      state = State.new(1, 2, 3, autonomous: true)
+      state = State.new(1, 2, "test-workspace", 3, autonomous: true)
 
       assert state.autonomous == true
     end
@@ -273,7 +274,7 @@ defmodule Msfailab.Tracks.TrackServer.StateTest do
 
       state =
         State.from_persisted(
-          %{track_id: 1, workspace_id: 2, container_id: 3},
+          %{track_id: 1, workspace_id: 2, workspace_slug: "test-workspace", container_id: 3},
           autonomous: true,
           console_history: console_history,
           chat_entries: chat_entries,
@@ -284,6 +285,7 @@ defmodule Msfailab.Tracks.TrackServer.StateTest do
 
       assert state.track_id == 1
       assert state.workspace_id == 2
+      assert state.workspace_slug == "test-workspace"
       assert state.container_id == 3
       assert state.autonomous == true
       assert state.console.history == console_history
@@ -298,11 +300,12 @@ defmodule Msfailab.Tracks.TrackServer.StateTest do
     test "handles empty persisted data" do
       state =
         State.from_persisted(
-          %{track_id: 1, workspace_id: 2, container_id: 3},
+          %{track_id: 1, workspace_id: 2, workspace_slug: "test-workspace", container_id: 3},
           autonomous: false
         )
 
       assert state.track_id == 1
+      assert state.workspace_slug == "test-workspace"
       assert state.autonomous == false
       assert state.console.history == []
       assert state.console.current_prompt == ""

@@ -67,7 +67,7 @@ defmodule Msfailab.ToolsTest do
       assert tool.name == "msf_command"
       assert tool.strict == true
       assert tool.cacheable == true
-      assert tool.approval_required == false
+      assert tool.approval_required == true
       assert tool.timeout == 60_000
     end
 
@@ -102,6 +102,49 @@ defmodule Msfailab.ToolsTest do
     end
   end
 
+  describe "OpenAI strict mode compatibility" do
+    test "tools with optional parameters must not use strict mode" do
+      # OpenAI strict mode requires ALL properties to be in the required array.
+      # Tools with optional parameters (properties not in required) must have strict: false.
+      tools = Tools.list_tools()
+
+      for tool <- tools do
+        properties = tool.parameters["properties"] || %{}
+        required = tool.parameters["required"] || []
+        property_names = Map.keys(properties)
+        has_optional_params = length(property_names) > length(required)
+
+        if has_optional_params do
+          assert tool.strict == false,
+                 "Tool '#{tool.name}' has optional parameters but strict: true. " <>
+                   "OpenAI strict mode requires all properties in 'required'. " <>
+                   "Properties: #{inspect(property_names)}, Required: #{inspect(required)}"
+        end
+      end
+    end
+
+    test "tools with all required parameters can use strict mode" do
+      # Tools where all properties are required can safely use strict: true
+      tools = Tools.list_tools()
+
+      for tool <- tools do
+        properties = tool.parameters["properties"] || %{}
+        required = tool.parameters["required"] || []
+        property_names = MapSet.new(Map.keys(properties))
+        required_set = MapSet.new(required)
+
+        all_required = MapSet.equal?(property_names, required_set)
+
+        if all_required and map_size(properties) > 0 do
+          # These tools CAN use strict mode (msf_command, bash_command)
+          # Just verify they have the expected strict setting
+          assert is_boolean(tool.strict),
+                 "Tool '#{tool.name}' has all parameters required, strict should be boolean"
+        end
+      end
+    end
+  end
+
   describe "Tool struct" do
     test "enforces required keys" do
       assert_raise ArgumentError, ~r/the following keys must also be given/, fn ->
@@ -118,7 +161,7 @@ defmodule Msfailab.ToolsTest do
 
       assert tool.strict == false
       assert tool.cacheable == true
-      assert tool.approval_required == false
+      assert tool.approval_required == true
       assert tool.timeout == nil
     end
 
@@ -129,13 +172,13 @@ defmodule Msfailab.ToolsTest do
         parameters: %{"type" => "object", "properties" => %{}, "required" => []},
         strict: true,
         cacheable: false,
-        approval_required: true,
+        approval_required: false,
         timeout: 30_000
       }
 
       assert tool.strict == true
       assert tool.cacheable == false
-      assert tool.approval_required == true
+      assert tool.approval_required == false
       assert tool.timeout == 30_000
     end
   end

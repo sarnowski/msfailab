@@ -25,17 +25,21 @@ defmodule Msfailab.Tracks.TrackServerTest do
   alias Msfailab.Tracks.TrackServer
 
   describe "start_link/1" do
-    test "starts and registers the track server" do
+    test "starts and registers the track server", %{workspace_id: workspace_id} do
       pid =
-        start_supervised!({TrackServer, track_id: 100, workspace_id: 1, container_id: 5})
+        start_supervised!(
+          {TrackServer, track_id: 100, workspace_id: workspace_id, container_id: 5}
+        )
 
       assert Process.alive?(pid)
       assert TrackServer.whereis(100) == pid
     end
 
-    test "initializes with offline console status" do
+    test "initializes with offline console status", %{workspace_id: workspace_id} do
       _pid =
-        start_supervised!({TrackServer, track_id: 101, workspace_id: 1, container_id: 5})
+        start_supervised!(
+          {TrackServer, track_id: 101, workspace_id: workspace_id, container_id: 5}
+        )
 
       assert TrackServer.get_console_status(101) == :offline
       assert TrackServer.get_console_history(101) == []
@@ -43,20 +47,24 @@ defmodule Msfailab.Tracks.TrackServerTest do
   end
 
   describe "get_console_history/1" do
-    test "returns empty list initially" do
+    test "returns empty list initially", %{workspace_id: workspace_id} do
       _pid =
-        start_supervised!({TrackServer, track_id: 200, workspace_id: 1, container_id: 5})
+        start_supervised!(
+          {TrackServer, track_id: 200, workspace_id: workspace_id, container_id: 5}
+        )
 
       assert TrackServer.get_console_history(200) == []
     end
   end
 
   describe "ConsoleUpdated event handling" do
-    test "creates startup block on :starting event" do
+    test "creates startup block on :starting event", %{workspace_id: workspace_id} do
       _pid =
-        start_supervised!({TrackServer, track_id: 300, workspace_id: 1, container_id: 5})
+        start_supervised!(
+          {TrackServer, track_id: 300, workspace_id: workspace_id, container_id: 5}
+        )
 
-      event = ConsoleUpdated.starting(1, 5, 300, "=[ metasploit v6 ]=\n")
+      event = ConsoleUpdated.starting(workspace_id, 5, 300, "=[ metasploit v6 ]=\n")
       Events.broadcast(event)
       Process.sleep(15)
 
@@ -69,15 +77,17 @@ defmodule Msfailab.Tracks.TrackServerTest do
       assert block.output == "=[ metasploit v6 ]=\n"
     end
 
-    test "appends output to startup block during initialization" do
+    test "appends output to startup block during initialization", %{workspace_id: workspace_id} do
       _pid =
-        start_supervised!({TrackServer, track_id: 301, workspace_id: 1, container_id: 5})
+        start_supervised!(
+          {TrackServer, track_id: 301, workspace_id: workspace_id, container_id: 5}
+        )
 
-      event1 = ConsoleUpdated.starting(1, 5, 301, "=[ metasploit v6 ]=\n")
+      event1 = ConsoleUpdated.starting(workspace_id, 5, 301, "=[ metasploit v6 ]=\n")
       Events.broadcast(event1)
       Process.sleep(10)
 
-      event2 = ConsoleUpdated.starting(1, 5, 301, "Loading modules...\n")
+      event2 = ConsoleUpdated.starting(workspace_id, 5, 301, "Loading modules...\n")
       Events.broadcast(event2)
       Process.sleep(15)
 
@@ -86,15 +96,17 @@ defmodule Msfailab.Tracks.TrackServerTest do
       assert block.output == "=[ metasploit v6 ]=\nLoading modules...\n"
     end
 
-    test "finishes startup block and transitions to :ready" do
+    test "finishes startup block and transitions to :ready", %{workspace_id: workspace_id} do
       _pid =
-        start_supervised!({TrackServer, track_id: 302, workspace_id: 1, container_id: 5})
+        start_supervised!(
+          {TrackServer, track_id: 302, workspace_id: workspace_id, container_id: 5}
+        )
 
-      event1 = ConsoleUpdated.starting(1, 5, 302, "=[ metasploit v6 ]=\n")
+      event1 = ConsoleUpdated.starting(workspace_id, 5, 302, "=[ metasploit v6 ]=\n")
       Events.broadcast(event1)
       Process.sleep(10)
 
-      event2 = ConsoleUpdated.ready(1, 5, 302, "msf6 > ")
+      event2 = ConsoleUpdated.ready(workspace_id, 5, 302, "msf6 > ")
       Events.broadcast(event2)
       Process.sleep(15)
 
@@ -108,20 +120,22 @@ defmodule Msfailab.Tracks.TrackServerTest do
       assert block.prompt == "msf6 > "
     end
 
-    test "creates command block on :busy event" do
+    test "creates command block on :busy event", %{workspace_id: workspace_id} do
       _pid =
-        start_supervised!({TrackServer, track_id: 303, workspace_id: 1, container_id: 5})
+        start_supervised!(
+          {TrackServer, track_id: 303, workspace_id: workspace_id, container_id: 5}
+        )
 
       # First go through startup -> ready
-      event1 = ConsoleUpdated.starting(1, 5, 303, "Banner\n")
-      event2 = ConsoleUpdated.ready(1, 5, 303, "msf6 > ")
+      event1 = ConsoleUpdated.starting(workspace_id, 5, 303, "Banner\n")
+      event2 = ConsoleUpdated.ready(workspace_id, 5, 303, "msf6 > ")
       Events.broadcast(event1)
       Process.sleep(5)
       Events.broadcast(event2)
       Process.sleep(10)
 
       # Now issue a command
-      event3 = ConsoleUpdated.busy(1, 5, 303, "cmd123", "db_status", "[*] Connected\n")
+      event3 = ConsoleUpdated.busy(workspace_id, 5, 303, "cmd123", "db_status", "[*] Connected\n")
       Events.broadcast(event3)
       Process.sleep(15)
 
@@ -135,18 +149,24 @@ defmodule Msfailab.Tracks.TrackServerTest do
       assert command.output == "[*] Connected\n"
     end
 
-    test "finishes command block on :ready event" do
+    test "finishes command block on :ready event", %{workspace_id: workspace_id} do
       _pid =
-        start_supervised!({TrackServer, track_id: 304, workspace_id: 1, container_id: 5})
+        start_supervised!(
+          {TrackServer, track_id: 304, workspace_id: workspace_id, container_id: 5}
+        )
 
       # Go through startup -> ready -> busy -> ready
-      Events.broadcast(ConsoleUpdated.starting(1, 5, 304, "Banner\n"))
+      Events.broadcast(ConsoleUpdated.starting(workspace_id, 5, 304, "Banner\n"))
       Process.sleep(5)
-      Events.broadcast(ConsoleUpdated.ready(1, 5, 304, "msf6 > "))
+      Events.broadcast(ConsoleUpdated.ready(workspace_id, 5, 304, "msf6 > "))
       Process.sleep(5)
-      Events.broadcast(ConsoleUpdated.busy(1, 5, 304, "cmd123", "help", "Core Commands\n"))
+
+      Events.broadcast(
+        ConsoleUpdated.busy(workspace_id, 5, 304, "cmd123", "help", "Core Commands\n")
+      )
+
       Process.sleep(5)
-      Events.broadcast(ConsoleUpdated.ready(1, 5, 304, "msf6 > "))
+      Events.broadcast(ConsoleUpdated.ready(workspace_id, 5, 304, "msf6 > "))
       Process.sleep(15)
 
       assert TrackServer.get_console_status(304) == :ready
@@ -158,20 +178,26 @@ defmodule Msfailab.Tracks.TrackServerTest do
       assert command.prompt == "msf6 > "
     end
 
-    test "marks running blocks as interrupted on :offline" do
+    test "marks running blocks as interrupted on :offline", %{workspace_id: workspace_id} do
       _pid =
-        start_supervised!({TrackServer, track_id: 305, workspace_id: 1, container_id: 5})
+        start_supervised!(
+          {TrackServer, track_id: 305, workspace_id: workspace_id, container_id: 5}
+        )
 
       # Start a command
-      Events.broadcast(ConsoleUpdated.starting(1, 5, 305, "Banner\n"))
+      Events.broadcast(ConsoleUpdated.starting(workspace_id, 5, 305, "Banner\n"))
       Process.sleep(5)
-      Events.broadcast(ConsoleUpdated.ready(1, 5, 305, "msf6 > "))
+      Events.broadcast(ConsoleUpdated.ready(workspace_id, 5, 305, "msf6 > "))
       Process.sleep(5)
-      Events.broadcast(ConsoleUpdated.busy(1, 5, 305, "cmd123", "exploit", "Running...\n"))
+
+      Events.broadcast(
+        ConsoleUpdated.busy(workspace_id, 5, 305, "cmd123", "exploit", "Running...\n")
+      )
+
       Process.sleep(5)
 
       # Console dies
-      Events.broadcast(ConsoleUpdated.offline(1, 5, 305))
+      Events.broadcast(ConsoleUpdated.offline(workspace_id, 5, 305))
       Process.sleep(15)
 
       assert TrackServer.get_console_status(305) == :offline
@@ -181,12 +207,14 @@ defmodule Msfailab.Tracks.TrackServerTest do
       assert command.status == :interrupted
     end
 
-    test "ignores events for other tracks" do
+    test "ignores events for other tracks", %{workspace_id: workspace_id} do
       _pid =
-        start_supervised!({TrackServer, track_id: 306, workspace_id: 1, container_id: 5})
+        start_supervised!(
+          {TrackServer, track_id: 306, workspace_id: workspace_id, container_id: 5}
+        )
 
       # Event for a different track
-      event = ConsoleUpdated.starting(1, 5, 999, "Banner\n")
+      event = ConsoleUpdated.starting(workspace_id, 5, 999, "Banner\n")
       Events.broadcast(event)
       Process.sleep(15)
 
@@ -197,28 +225,32 @@ defmodule Msfailab.Tracks.TrackServerTest do
   end
 
   describe "ConsoleChanged broadcasting" do
-    test "broadcasts ConsoleChanged on ConsoleUpdated" do
-      Events.subscribe_to_workspace(1)
+    test "broadcasts ConsoleChanged on ConsoleUpdated", %{workspace_id: workspace_id} do
+      Events.subscribe_to_workspace(workspace_id)
 
       _pid =
-        start_supervised!({TrackServer, track_id: 400, workspace_id: 1, container_id: 5})
+        start_supervised!(
+          {TrackServer, track_id: 400, workspace_id: workspace_id, container_id: 5}
+        )
 
-      event = ConsoleUpdated.starting(1, 5, 400, "Banner\n")
+      event = ConsoleUpdated.starting(workspace_id, 5, 400, "Banner\n")
       Events.broadcast(event)
 
       assert_receive %ConsoleUpdated{track_id: 400}
-      assert_receive %ConsoleChanged{track_id: 400, workspace_id: 1}
+      assert_receive %ConsoleChanged{track_id: 400, workspace_id: ^workspace_id}
     end
   end
 
   describe "get_state/1" do
-    test "returns full state snapshot" do
+    test "returns full state snapshot", %{workspace_id: workspace_id} do
       _pid =
-        start_supervised!({TrackServer, track_id: 500, workspace_id: 1, container_id: 5})
+        start_supervised!(
+          {TrackServer, track_id: 500, workspace_id: workspace_id, container_id: 5}
+        )
 
-      Events.broadcast(ConsoleUpdated.starting(1, 5, 500, "Banner\n"))
+      Events.broadcast(ConsoleUpdated.starting(workspace_id, 5, 500, "Banner\n"))
       Process.sleep(5)
-      Events.broadcast(ConsoleUpdated.ready(1, 5, 500, "msf6 > "))
+      Events.broadcast(ConsoleUpdated.ready(workspace_id, 5, 500, "msf6 > "))
       Process.sleep(15)
 
       state = TrackServer.get_state(500)
@@ -237,9 +269,11 @@ defmodule Msfailab.Tracks.TrackServerTest do
   end
 
   describe "whereis/1" do
-    test "returns pid for registered track server" do
+    test "returns pid for registered track server", %{workspace_id: workspace_id} do
       pid =
-        start_supervised!({TrackServer, track_id: 600, workspace_id: 1, container_id: 5})
+        start_supervised!(
+          {TrackServer, track_id: 600, workspace_id: workspace_id, container_id: 5}
+        )
 
       assert TrackServer.whereis(600) == pid
     end
@@ -250,20 +284,26 @@ defmodule Msfailab.Tracks.TrackServerTest do
   end
 
   describe "edge cases in ConsoleUpdated handling" do
-    test "appends output to existing command block during :busy" do
+    test "appends output to existing command block during :busy", %{workspace_id: workspace_id} do
       _pid =
-        start_supervised!({TrackServer, track_id: 700, workspace_id: 1, container_id: 5})
+        start_supervised!(
+          {TrackServer, track_id: 700, workspace_id: workspace_id, container_id: 5}
+        )
 
       # Go through startup -> ready -> busy
-      Events.broadcast(ConsoleUpdated.starting(1, 5, 700, "Banner\n"))
+      Events.broadcast(ConsoleUpdated.starting(workspace_id, 5, 700, "Banner\n"))
       Process.sleep(5)
-      Events.broadcast(ConsoleUpdated.ready(1, 5, 700, "msf6 > "))
+      Events.broadcast(ConsoleUpdated.ready(workspace_id, 5, 700, "msf6 > "))
       Process.sleep(5)
-      Events.broadcast(ConsoleUpdated.busy(1, 5, 700, "cmd123", "scan", "Starting...\n"))
+
+      Events.broadcast(
+        ConsoleUpdated.busy(workspace_id, 5, 700, "cmd123", "scan", "Starting...\n")
+      )
+
       Process.sleep(5)
 
       # Additional output while still busy
-      Events.broadcast(ConsoleUpdated.busy(1, 5, 700, nil, nil, "Progress: 50%\n"))
+      Events.broadcast(ConsoleUpdated.busy(workspace_id, 5, 700, nil, nil, "Progress: 50%\n"))
       Process.sleep(15)
 
       history = TrackServer.get_console_history(700)
@@ -271,58 +311,66 @@ defmodule Msfailab.Tracks.TrackServerTest do
       assert command.output == "Starting...\nProgress: 50%\n"
     end
 
-    test "handles :ready when already :ready (just updates prompt)" do
+    test "handles :ready when already :ready (just updates prompt)", %{workspace_id: workspace_id} do
       _pid =
-        start_supervised!({TrackServer, track_id: 701, workspace_id: 1, container_id: 5})
+        start_supervised!(
+          {TrackServer, track_id: 701, workspace_id: workspace_id, container_id: 5}
+        )
 
       # Go to ready
-      Events.broadcast(ConsoleUpdated.starting(1, 5, 701, "Banner\n"))
+      Events.broadcast(ConsoleUpdated.starting(workspace_id, 5, 701, "Banner\n"))
       Process.sleep(5)
-      Events.broadcast(ConsoleUpdated.ready(1, 5, 701, "msf6 > "))
+      Events.broadcast(ConsoleUpdated.ready(workspace_id, 5, 701, "msf6 > "))
       Process.sleep(10)
 
       # Another ready event (prompt might change after module load)
-      Events.broadcast(ConsoleUpdated.ready(1, 5, 701, "msf6 exploit(handler) > "))
+      Events.broadcast(ConsoleUpdated.ready(workspace_id, 5, 701, "msf6 exploit(handler) > "))
       Process.sleep(15)
 
       assert TrackServer.get_console_status(701) == :ready
       assert TrackServer.get_prompt(701) == "msf6 exploit(handler) > "
     end
 
-    test "handles :starting when in unexpected state (fallback)" do
+    test "handles :starting when in unexpected state (fallback)", %{workspace_id: workspace_id} do
       _pid =
-        start_supervised!({TrackServer, track_id: 702, workspace_id: 1, container_id: 5})
+        start_supervised!(
+          {TrackServer, track_id: 702, workspace_id: workspace_id, container_id: 5}
+        )
 
       # Go to ready first
-      Events.broadcast(ConsoleUpdated.starting(1, 5, 702, "Banner\n"))
+      Events.broadcast(ConsoleUpdated.starting(workspace_id, 5, 702, "Banner\n"))
       Process.sleep(5)
-      Events.broadcast(ConsoleUpdated.ready(1, 5, 702, "msf6 > "))
+      Events.broadcast(ConsoleUpdated.ready(workspace_id, 5, 702, "msf6 > "))
       Process.sleep(10)
 
       # Unexpected :starting while ready (edge case, shouldn't normally happen)
-      Events.broadcast(ConsoleUpdated.starting(1, 5, 702, "Restarting...\n"))
+      Events.broadcast(ConsoleUpdated.starting(workspace_id, 5, 702, "Restarting...\n"))
       Process.sleep(15)
 
       # Should just update console_status to :starting
       assert TrackServer.get_console_status(702) == :starting
     end
 
-    test "handles :busy without command info when already busy (append output)" do
+    test "handles :busy without command info when already busy (append output)", %{
+      workspace_id: workspace_id
+    } do
       _pid =
-        start_supervised!({TrackServer, track_id: 703, workspace_id: 1, container_id: 5})
+        start_supervised!(
+          {TrackServer, track_id: 703, workspace_id: workspace_id, container_id: 5}
+        )
 
       # Go to ready then busy
-      Events.broadcast(ConsoleUpdated.starting(1, 5, 703, "Banner\n"))
+      Events.broadcast(ConsoleUpdated.starting(workspace_id, 5, 703, "Banner\n"))
       Process.sleep(5)
-      Events.broadcast(ConsoleUpdated.ready(1, 5, 703, "msf6 > "))
+      Events.broadcast(ConsoleUpdated.ready(workspace_id, 5, 703, "msf6 > "))
       Process.sleep(5)
-      Events.broadcast(ConsoleUpdated.busy(1, 5, 703, "cmd1", "help", ""))
+      Events.broadcast(ConsoleUpdated.busy(workspace_id, 5, 703, "cmd1", "help", ""))
       Process.sleep(5)
 
       # More output without new command (continuous output)
-      Events.broadcast(ConsoleUpdated.busy(1, 5, 703, nil, nil, "Line 1\n"))
+      Events.broadcast(ConsoleUpdated.busy(workspace_id, 5, 703, nil, nil, "Line 1\n"))
       Process.sleep(5)
-      Events.broadcast(ConsoleUpdated.busy(1, 5, 703, nil, nil, "Line 2\n"))
+      Events.broadcast(ConsoleUpdated.busy(workspace_id, 5, 703, nil, nil, "Line 2\n"))
       Process.sleep(15)
 
       history = TrackServer.get_console_history(703)
@@ -330,27 +378,31 @@ defmodule Msfailab.Tracks.TrackServerTest do
       assert command.output == "Line 1\nLine 2\n"
     end
 
-    test "handles :busy when in unexpected state (fallback)" do
+    test "handles :busy when in unexpected state (fallback)", %{workspace_id: workspace_id} do
       _pid =
-        start_supervised!({TrackServer, track_id: 704, workspace_id: 1, container_id: 5})
+        start_supervised!(
+          {TrackServer, track_id: 704, workspace_id: workspace_id, container_id: 5}
+        )
 
       # Still offline, receive busy event (edge case)
-      Events.broadcast(ConsoleUpdated.busy(1, 5, 704, "cmd1", "help", "output"))
+      Events.broadcast(ConsoleUpdated.busy(workspace_id, 5, 704, "cmd1", "help", "output"))
       Process.sleep(15)
 
       # Should just update console_status
       assert TrackServer.get_console_status(704) == :busy
     end
 
-    test "appends empty output gracefully (no change)" do
+    test "appends empty output gracefully (no change)", %{workspace_id: workspace_id} do
       _pid =
-        start_supervised!({TrackServer, track_id: 705, workspace_id: 1, container_id: 5})
+        start_supervised!(
+          {TrackServer, track_id: 705, workspace_id: workspace_id, container_id: 5}
+        )
 
-      Events.broadcast(ConsoleUpdated.starting(1, 5, 705, "Banner\n"))
+      Events.broadcast(ConsoleUpdated.starting(workspace_id, 5, 705, "Banner\n"))
       Process.sleep(10)
 
       # Empty output should not change anything
-      Events.broadcast(ConsoleUpdated.starting(1, 5, 705, ""))
+      Events.broadcast(ConsoleUpdated.starting(workspace_id, 5, 705, ""))
       Process.sleep(15)
 
       history = TrackServer.get_console_history(705)
@@ -358,16 +410,18 @@ defmodule Msfailab.Tracks.TrackServerTest do
       assert block.output == "Banner\n"
     end
 
-    test "interrupts startup block when console goes offline" do
+    test "interrupts startup block when console goes offline", %{workspace_id: workspace_id} do
       _pid =
-        start_supervised!({TrackServer, track_id: 706, workspace_id: 1, container_id: 5})
+        start_supervised!(
+          {TrackServer, track_id: 706, workspace_id: workspace_id, container_id: 5}
+        )
 
       # Start startup
-      Events.broadcast(ConsoleUpdated.starting(1, 5, 706, "Banner\n"))
+      Events.broadcast(ConsoleUpdated.starting(workspace_id, 5, 706, "Banner\n"))
       Process.sleep(10)
 
       # Console dies during startup
-      Events.broadcast(ConsoleUpdated.offline(1, 5, 706))
+      Events.broadcast(ConsoleUpdated.offline(workspace_id, 5, 706))
       Process.sleep(15)
 
       history = TrackServer.get_console_history(706)
@@ -378,9 +432,11 @@ defmodule Msfailab.Tracks.TrackServerTest do
   end
 
   describe "termination" do
-    test "unregisters console on normal termination" do
+    test "unregisters console on normal termination", %{workspace_id: workspace_id} do
       _pid =
-        start_supervised!({TrackServer, track_id: 800, workspace_id: 1, container_id: 5})
+        start_supervised!(
+          {TrackServer, track_id: 800, workspace_id: workspace_id, container_id: 5}
+        )
 
       # Stop the server - this is synchronous and waits for termination
       :ok = stop_supervised(TrackServer)
@@ -412,7 +468,7 @@ defmodule Msfailab.Tracks.TrackServerTest do
 
   describe "console registration with Container" do
     # These tests require both Container and Track infrastructure
-    setup do
+    setup %{test_workspace: test_workspace} do
       # Start Container infrastructure
       start_supervised!({Registry, keys: :unique, name: Msfailab.Containers.Registry})
 
@@ -420,10 +476,12 @@ defmodule Msfailab.Tracks.TrackServerTest do
         {DynamicSupervisor, name: Msfailab.Containers.ContainerSupervisor, strategy: :one_for_one}
       )
 
-      :ok
+      %{test_workspace: test_workspace}
     end
 
-    test "registers with Container even when Container is in offline state" do
+    test "registers with Container even when Container is in offline state", %{
+      test_workspace: test_workspace
+    } do
       alias Msfailab.Containers.Container
 
       # Start Container GenServer WITHOUT auto_start (simulates Reconciler startup)
@@ -433,8 +491,8 @@ defmodule Msfailab.Tracks.TrackServerTest do
           Msfailab.Containers.ContainerSupervisor,
           {Container,
            container_record_id: 999,
-           workspace_id: 1,
-           workspace_slug: "test-workspace",
+           workspace_id: test_workspace.id,
+           workspace_slug: test_workspace.slug,
            container_slug: "test-container",
            container_name: "Test Container",
            docker_image: "test:latest"}
@@ -446,7 +504,9 @@ defmodule Msfailab.Tracks.TrackServerTest do
 
       # Start TrackServer - it should register with Container
       _track_pid =
-        start_supervised!({TrackServer, track_id: 900, workspace_id: 1, container_id: 999})
+        start_supervised!(
+          {TrackServer, track_id: 900, workspace_id: test_workspace.id, container_id: 999}
+        )
 
       # Give time for registration to complete
       Process.sleep(15)
@@ -456,7 +516,9 @@ defmodule Msfailab.Tracks.TrackServerTest do
       assert MapSet.member?(snapshot.registered_tracks, 900)
     end
 
-    test "Container spawns console when it reaches running state after registration" do
+    test "Container spawns console when it reaches running state after registration", %{
+      test_workspace: test_workspace
+    } do
       alias Msfailab.Containers.Container
 
       # Start Container GenServer in offline state
@@ -465,8 +527,8 @@ defmodule Msfailab.Tracks.TrackServerTest do
           Msfailab.Containers.ContainerSupervisor,
           {Container,
            container_record_id: 998,
-           workspace_id: 1,
-           workspace_slug: "test-workspace",
+           workspace_id: test_workspace.id,
+           workspace_slug: test_workspace.slug,
            container_slug: "test-container",
            container_name: "Test Container",
            docker_image: "test:latest"}
@@ -474,7 +536,9 @@ defmodule Msfailab.Tracks.TrackServerTest do
 
       # Start TrackServer - registers with offline Container
       _track_pid =
-        start_supervised!({TrackServer, track_id: 901, workspace_id: 1, container_id: 998})
+        start_supervised!(
+          {TrackServer, track_id: 901, workspace_id: test_workspace.id, container_id: 998}
+        )
 
       Process.sleep(15)
 
@@ -492,9 +556,11 @@ defmodule Msfailab.Tracks.TrackServerTest do
   # ===========================================================================
 
   describe "get_chat_state/1" do
-    test "returns ChatState with empty entries initially" do
+    test "returns ChatState with empty entries initially", %{workspace_id: workspace_id} do
       _pid =
-        start_supervised!({TrackServer, track_id: 1000, workspace_id: 1, container_id: 5})
+        start_supervised!(
+          {TrackServer, track_id: 1000, workspace_id: workspace_id, container_id: 5}
+        )
 
       chat_state = TrackServer.get_chat_state(1000)
 
@@ -509,9 +575,11 @@ defmodule Msfailab.Tracks.TrackServerTest do
   # ===========================================================================
 
   describe "set_autonomous/2" do
-    test "enables autonomous mode" do
+    test "enables autonomous mode", %{workspace_id: workspace_id} do
       _pid =
-        start_supervised!({TrackServer, track_id: 1100, workspace_id: 1, container_id: 5})
+        start_supervised!(
+          {TrackServer, track_id: 1100, workspace_id: workspace_id, container_id: 5}
+        )
 
       # Default is false (not autonomous)
       :ok = TrackServer.set_autonomous(1100, true)
@@ -524,9 +592,11 @@ defmodule Msfailab.Tracks.TrackServerTest do
       assert Process.alive?(TrackServer.whereis(1100))
     end
 
-    test "disables autonomous mode" do
+    test "disables autonomous mode", %{workspace_id: workspace_id} do
       _pid =
-        start_supervised!({TrackServer, track_id: 1101, workspace_id: 1, container_id: 5})
+        start_supervised!(
+          {TrackServer, track_id: 1101, workspace_id: workspace_id, container_id: 5}
+        )
 
       # Enable then disable
       :ok = TrackServer.set_autonomous(1101, true)

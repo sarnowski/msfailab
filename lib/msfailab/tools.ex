@@ -47,7 +47,7 @@ defmodule Msfailab.Tools do
   |-------|------|---------|-------------|
   | `strict` | `boolean()` | `false` | OpenAI: Enforce structured output matching schema |
   | `cacheable` | `boolean()` | `true` | Anthropic: Allow caching of tool definition |
-  | `approval_required` | `boolean()` | `false` | Require user approval before execution |
+  | `approval_required` | `boolean()` | `true` | Require user approval before execution |
   | `timeout` | `pos_integer() \\| nil` | `nil` | Max execution time in milliseconds |
   | `sequential` | `boolean()` | `false` | If true, only one can execute at a time |
 
@@ -168,7 +168,7 @@ defmodule Msfailab.Tools do
       },
       strict: true,
       cacheable: true,
-      approval_required: false,
+      approval_required: true,
       timeout: 60_000,
       sequential: true
     },
@@ -192,8 +192,357 @@ defmodule Msfailab.Tools do
       },
       strict: true,
       cacheable: true,
-      approval_required: false,
+      approval_required: true,
       timeout: 120_000,
+      sequential: false
+    },
+    # Database query tools - these don't require approval as they're read-only
+    %Tool{
+      name: "list_hosts",
+      description:
+        "Query discovered hosts from the Metasploit database. " <>
+          "Returns host details including OS, architecture, and finding counts.",
+      parameters: %{
+        "type" => "object",
+        "properties" => %{
+          "address" => %{
+            "type" => "string",
+            "description" => "Filter by IP address (exact match)"
+          },
+          "os" => %{
+            "type" => "string",
+            "description" => "Filter by OS name (case-insensitive partial match)"
+          },
+          "state" => %{
+            "type" => "string",
+            "enum" => ["alive", "down", "unknown"],
+            "description" => "Filter by host state"
+          },
+          "search" => %{
+            "type" => "string",
+            "description" => "Search in hostname, comments, and info"
+          },
+          "limit" => %{
+            "type" => "integer",
+            "description" => "Maximum results (default: 50, max: 200)"
+          }
+        },
+        "required" => [],
+        "additionalProperties" => false
+      },
+      strict: false,
+      cacheable: true,
+      approval_required: false,
+      timeout: 30_000,
+      sequential: false
+    },
+    %Tool{
+      name: "list_services",
+      description:
+        "Query discovered services from the Metasploit database. " <>
+          "Returns service details with host information.",
+      parameters: %{
+        "type" => "object",
+        "properties" => %{
+          "host" => %{
+            "type" => "string",
+            "description" => "Filter by host IP address"
+          },
+          "port" => %{
+            "type" => "integer",
+            "description" => "Filter by port number"
+          },
+          "proto" => %{
+            "type" => "string",
+            "enum" => ["tcp", "udp"],
+            "description" => "Filter by protocol"
+          },
+          "state" => %{
+            "type" => "string",
+            "enum" => ["open", "closed", "filtered", "unknown"],
+            "description" => "Filter by state"
+          },
+          "name" => %{
+            "type" => "string",
+            "description" => "Filter by service name (e.g., 'http', 'ssh')"
+          },
+          "search" => %{
+            "type" => "string",
+            "description" => "Search in service info/banner"
+          },
+          "limit" => %{
+            "type" => "integer",
+            "description" => "Maximum results (default: 50, max: 200)"
+          }
+        },
+        "required" => [],
+        "additionalProperties" => false
+      },
+      strict: false,
+      cacheable: true,
+      approval_required: false,
+      timeout: 30_000,
+      sequential: false
+    },
+    %Tool{
+      name: "list_vulns",
+      description:
+        "Query discovered vulnerabilities from the Metasploit database. " <>
+          "Returns vulnerability details with host, service, and references (CVE, MSB, EDB, etc.) always included.",
+      parameters: %{
+        "type" => "object",
+        "properties" => %{
+          "host" => %{
+            "type" => "string",
+            "description" => "Filter by host IP address"
+          },
+          "service_port" => %{
+            "type" => "integer",
+            "description" => "Filter by service port"
+          },
+          "name" => %{
+            "type" => "string",
+            "description" => "Filter by vulnerability/module name (partial match)"
+          },
+          "search" => %{
+            "type" => "string",
+            "description" => "Search in name and info"
+          },
+          "exploited" => %{
+            "type" => "boolean",
+            "description" => "Filter by exploitation status"
+          },
+          "limit" => %{
+            "type" => "integer",
+            "description" => "Maximum results (default: 50, max: 200)"
+          }
+        },
+        "required" => [],
+        "additionalProperties" => false
+      },
+      strict: false,
+      cacheable: true,
+      approval_required: false,
+      timeout: 30_000,
+      sequential: false
+    },
+    %Tool{
+      name: "list_creds",
+      description:
+        "Query discovered credentials from the Metasploit database. " <>
+          "Returns credential details with host and service information.",
+      parameters: %{
+        "type" => "object",
+        "properties" => %{
+          "host" => %{
+            "type" => "string",
+            "description" => "Filter by host IP address"
+          },
+          "service_port" => %{
+            "type" => "integer",
+            "description" => "Filter by service port"
+          },
+          "service_name" => %{
+            "type" => "string",
+            "description" => "Filter by service name (e.g., 'ssh', 'smb')"
+          },
+          "user" => %{
+            "type" => "string",
+            "description" => "Filter by username (partial match)"
+          },
+          "ptype" => %{
+            "type" => "string",
+            "description" => "Filter by credential type (e.g., 'password', 'hash')"
+          },
+          "limit" => %{
+            "type" => "integer",
+            "description" => "Maximum results (default: 50, max: 200)"
+          }
+        },
+        "required" => [],
+        "additionalProperties" => false
+      },
+      strict: false,
+      cacheable: true,
+      approval_required: false,
+      timeout: 30_000,
+      sequential: false
+    },
+    %Tool{
+      name: "list_loots",
+      description:
+        "Query captured loot/artifacts from the Metasploit database. " <>
+          "Returns loot metadata (use retrieve_loot for contents).",
+      parameters: %{
+        "type" => "object",
+        "properties" => %{
+          "host" => %{
+            "type" => "string",
+            "description" => "Filter by host IP address"
+          },
+          "ltype" => %{
+            "type" => "string",
+            "description" => "Filter by loot type (e.g., 'windows.hashes')"
+          },
+          "search" => %{
+            "type" => "string",
+            "description" => "Search in loot name and info"
+          },
+          "limit" => %{
+            "type" => "integer",
+            "description" => "Maximum results (default: 50, max: 200)"
+          }
+        },
+        "required" => [],
+        "additionalProperties" => false
+      },
+      strict: false,
+      cacheable: true,
+      approval_required: false,
+      timeout: 30_000,
+      sequential: false
+    },
+    %Tool{
+      name: "list_notes",
+      description:
+        "Query notes/annotations from the Metasploit database. " <>
+          "Returns notes with associated host, service, or vulnerability information.",
+      parameters: %{
+        "type" => "object",
+        "properties" => %{
+          "host" => %{
+            "type" => "string",
+            "description" => "Filter by host IP address"
+          },
+          "ntype" => %{
+            "type" => "string",
+            "description" => "Filter by note type (e.g., 'agent.observation')"
+          },
+          "critical" => %{
+            "type" => "boolean",
+            "description" => "Filter by critical flag"
+          },
+          "search" => %{
+            "type" => "string",
+            "description" => "Search in note data content"
+          },
+          "limit" => %{
+            "type" => "integer",
+            "description" => "Maximum results (default: 50, max: 200)"
+          }
+        },
+        "required" => [],
+        "additionalProperties" => false
+      },
+      strict: false,
+      cacheable: true,
+      approval_required: false,
+      timeout: 30_000,
+      sequential: false
+    },
+    %Tool{
+      name: "list_sessions",
+      description:
+        "Query session history from the Metasploit database. " <>
+          "Returns session details including exploit used and status.",
+      parameters: %{
+        "type" => "object",
+        "properties" => %{
+          "host" => %{
+            "type" => "string",
+            "description" => "Filter by host IP address"
+          },
+          "stype" => %{
+            "type" => "string",
+            "description" => "Filter by session type (e.g., 'meterpreter', 'shell')"
+          },
+          "active" => %{
+            "type" => "boolean",
+            "description" => "Filter by active status (true = currently open)"
+          },
+          "limit" => %{
+            "type" => "integer",
+            "description" => "Maximum results (default: 50, max: 200)"
+          }
+        },
+        "required" => [],
+        "additionalProperties" => false
+      },
+      strict: false,
+      cacheable: true,
+      approval_required: false,
+      timeout: 30_000,
+      sequential: false
+    },
+    %Tool{
+      name: "retrieve_loot",
+      description:
+        "Retrieve the contents of a captured loot file. " <>
+          "Use list_loots first to find entries, then retrieve specific contents.",
+      parameters: %{
+        "type" => "object",
+        "properties" => %{
+          "loot_id" => %{
+            "type" => "integer",
+            "description" => "The loot ID from list_loots results"
+          },
+          "max_size" => %{
+            "type" => "integer",
+            "description" => "Maximum bytes to return (default: 10000, max: 100000)"
+          }
+        },
+        "required" => ["loot_id"],
+        "additionalProperties" => false
+      },
+      strict: false,
+      cacheable: true,
+      approval_required: false,
+      timeout: 10_000,
+      sequential: false
+    },
+    %Tool{
+      name: "create_note",
+      description:
+        "Create a research note in the Metasploit database. Notes can be attached to hosts, services, or stand alone.\n\n" <>
+          "Standard note types:\n" <>
+          "- agent.observation: General findings and observations\n" <>
+          "- agent.hypothesis: Suspected vulnerabilities or attack paths\n" <>
+          "- agent.summary: Session or scan summaries\n" <>
+          "- agent.failed_attempt: Documentation of failed exploits\n" <>
+          "- agent.recommendation: Suggested next steps\n" <>
+          "- agent.finding: Confirmed security findings\n\n" <>
+          "Custom types allowed if prefixed with 'agent.'",
+      parameters: %{
+        "type" => "object",
+        "properties" => %{
+          "ntype" => %{
+            "type" => "string",
+            "description" => "Note type (must start with 'agent.')"
+          },
+          "content" => %{
+            "type" => "string",
+            "description" => "Note content text"
+          },
+          "host" => %{
+            "type" => "string",
+            "description" => "Host IP address to attach note to (optional)"
+          },
+          "service_port" => %{
+            "type" => "integer",
+            "description" => "Service port to attach note to (requires host)"
+          },
+          "critical" => %{
+            "type" => "boolean",
+            "description" => "Mark as critical finding (default: false)"
+          }
+        },
+        "required" => ["ntype", "content"],
+        "additionalProperties" => false
+      },
+      strict: false,
+      cacheable: true,
+      approval_required: false,
+      timeout: 10_000,
       sequential: false
     }
   ]
@@ -205,9 +554,9 @@ defmodule Msfailab.Tools do
 
       iex> tools = Msfailab.Tools.list_tools()
       iex> length(tools)
-      2
+      11
       iex> Enum.map(tools, & &1.name) |> Enum.sort()
-      ["bash_command", "msf_command"]
+      ["bash_command", "create_note", "list_creds", "list_hosts", "list_loots", "list_notes", "list_services", "list_sessions", "list_vulns", "msf_command", "retrieve_loot"]
   """
   @spec list_tools() :: [Tool.t()]
   def list_tools, do: @tools

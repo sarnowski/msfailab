@@ -236,6 +236,7 @@ defmodule Msfailab.Tracks.TrackServer.State do
   @type t :: %__MODULE__{
           track_id: integer(),
           workspace_id: integer(),
+          workspace_slug: String.t(),
           container_id: integer(),
           autonomous: boolean(),
           console: Console.t(),
@@ -244,10 +245,11 @@ defmodule Msfailab.Tracks.TrackServer.State do
           chat_entries: [ChatEntry.t()]
         }
 
-  @enforce_keys [:track_id, :workspace_id, :container_id]
+  @enforce_keys [:track_id, :workspace_id, :workspace_slug, :container_id]
   defstruct [
     :track_id,
     :workspace_id,
+    :workspace_slug,
     :container_id,
     autonomous: false,
     console: nil,
@@ -259,11 +261,12 @@ defmodule Msfailab.Tracks.TrackServer.State do
   @doc """
   Creates a new state with the given IDs and defaults.
   """
-  @spec new(integer(), integer(), integer(), keyword()) :: t()
-  def new(track_id, workspace_id, container_id, opts \\ []) do
+  @spec new(integer(), integer(), String.t(), integer(), keyword()) :: t()
+  def new(track_id, workspace_id, workspace_slug, container_id, opts \\ []) do
     %__MODULE__{
       track_id: track_id,
       workspace_id: workspace_id,
+      workspace_slug: workspace_slug,
       container_id: container_id,
       autonomous: Keyword.get(opts, :autonomous, false),
       console: Console.new(),
@@ -278,7 +281,7 @@ defmodule Msfailab.Tracks.TrackServer.State do
 
   ## Parameters
 
-  - `ids` - Map with `:track_id`, `:workspace_id`, `:container_id`
+  - `ids` - Map with `:track_id`, `:workspace_id`, `:workspace_slug`, `:container_id`
   - `opts` - Keyword list with:
     - `:autonomous` - Whether autonomous mode is enabled
     - `:console_history` - Persisted console history blocks
@@ -291,6 +294,7 @@ defmodule Msfailab.Tracks.TrackServer.State do
   def from_persisted(ids, opts) do
     track_id = Map.fetch!(ids, :track_id)
     workspace_id = Map.fetch!(ids, :workspace_id)
+    workspace_slug = Map.fetch!(ids, :workspace_slug)
     container_id = Map.fetch!(ids, :container_id)
 
     autonomous = Keyword.get(opts, :autonomous, false)
@@ -303,6 +307,7 @@ defmodule Msfailab.Tracks.TrackServer.State do
     %__MODULE__{
       track_id: track_id,
       workspace_id: workspace_id,
+      workspace_slug: workspace_slug,
       container_id: container_id,
       autonomous: autonomous,
       console: Console.from_history(console_history),

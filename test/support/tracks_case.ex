@@ -87,6 +87,15 @@ defmodule Msfailab.TracksCase do
       {DynamicSupervisor, name: Msfailab.Tracks.TrackSupervisor, strategy: :one_for_one}
     )
 
-    :ok
+    # Create a test workspace for TrackServer (required since init looks up workspace)
+    unique_id = System.unique_integer([:positive])
+
+    {:ok, workspace} =
+      Msfailab.Workspaces.create_workspace(%{
+        name: "Test Workspace #{unique_id}",
+        slug: "test-workspace-#{unique_id}"
+      })
+
+    %{test_workspace: workspace, workspace_id: workspace.id}
   end
 end

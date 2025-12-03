@@ -34,6 +34,9 @@ defmodule MsfailabWeb.WorkspaceComponents do
   alias Msfailab.Tracks.ChatState
   alias Phoenix.LiveView.JS
 
+  # MSF data tools (database query/mutation tools)
+  @msf_data_tools ~w(list_hosts list_services list_vulns list_creds list_loots list_notes list_sessions retrieve_loot create_note)
+
   # coveralls-ignore-start
   # Reason: Pure presentation components - UI templates without business logic
 
@@ -1070,6 +1073,21 @@ defmodule MsfailabWeb.WorkspaceComponents do
     """
   end
 
+  # Executing state for MSF data tools - simple box with active label and status badge
+  defp tool_executing_box(%{entry: %{tool_name: tool_name}} = assigns)
+       when tool_name in @msf_data_tools do
+    assigns = assign(assigns, :label, msf_data_active_label(tool_name))
+
+    ~H"""
+    <div class="flex justify-end">
+      <div class="min-w-[40%] max-w-[70%] bg-base-200 rounded-box px-4 py-2 border border-base-300 flex items-center justify-between gap-4">
+        <span class="text-sm text-base-content">{@label}</span>
+        <.tool_status_badge status={:executing} />
+      </div>
+    </div>
+    """
+  end
+
   # Default executing state for unknown tools
   defp tool_executing_box(assigns) do
     prompt = get_tool_prompt(assigns.entry)
@@ -1145,6 +1163,13 @@ defmodule MsfailabWeb.WorkspaceComponents do
     <.terminal_box title="bash" timestamp={@entry.timestamp}>
       {MsfailabWeb.Console.render_bash_output(@command, @output)}
     </.terminal_box>
+    """
+  end
+
+  # Finished state for MSF data tools - hidden (result is consumed by LLM, not shown to user)
+  defp tool_finished_box(%{entry: %{tool_name: tool_name}} = assigns)
+       when tool_name in @msf_data_tools do
+    ~H"""
     """
   end
 
@@ -1231,6 +1256,15 @@ defmodule MsfailabWeb.WorkspaceComponents do
   # Helper function to get display name for tools
   defp tool_display_name("msf_command"), do: "Metasploit Command"
   defp tool_display_name("bash_command"), do: "Bash Command"
+  defp tool_display_name("list_hosts"), do: "List Hosts"
+  defp tool_display_name("list_services"), do: "List Services"
+  defp tool_display_name("list_vulns"), do: "List Vulnerabilities"
+  defp tool_display_name("list_creds"), do: "List Credentials"
+  defp tool_display_name("list_loots"), do: "List Loot"
+  defp tool_display_name("list_notes"), do: "List Notes"
+  defp tool_display_name("list_sessions"), do: "List Sessions"
+  defp tool_display_name("retrieve_loot"), do: "Retrieve Loot"
+  defp tool_display_name("create_note"), do: "Create Note"
   defp tool_display_name(name), do: name
 
   # Helper function to extract command from tool arguments
@@ -1251,6 +1285,28 @@ defmodule MsfailabWeb.WorkspaceComponents do
   end
 
   defp get_tool_prompt(_entry), do: ""
+
+  @doc """
+  Returns true if the tool is an MSF data tool (database query/mutation tools).
+  """
+  @spec msf_data_tool?(String.t()) :: boolean()
+  def msf_data_tool?(tool_name) when tool_name in @msf_data_tools, do: true
+  def msf_data_tool?(_tool_name), do: false
+
+  @doc """
+  Returns the active label for an MSF data tool (e.g., "Listing hosts...").
+  """
+  @spec msf_data_active_label(String.t()) :: String.t()
+  def msf_data_active_label("list_hosts"), do: "Listing hosts..."
+  def msf_data_active_label("list_services"), do: "Listing services..."
+  def msf_data_active_label("list_vulns"), do: "Listing vulnerabilities..."
+  def msf_data_active_label("list_creds"), do: "Listing credentials..."
+  def msf_data_active_label("list_loots"), do: "Listing loot..."
+  def msf_data_active_label("list_notes"), do: "Listing notes..."
+  def msf_data_active_label("list_sessions"), do: "Listing sessions..."
+  def msf_data_active_label("retrieve_loot"), do: "Retrieving loot..."
+  def msf_data_active_label("create_note"), do: "Creating note..."
+  def msf_data_active_label(_tool_name), do: ""
 
   @doc """
   Formats a timestamp for display in chat entries.

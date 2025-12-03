@@ -38,7 +38,7 @@ defmodule Msfailab.Tools.Tool do
   |-------|------|---------|-------------|
   | `strict` | `boolean()` | `false` | OpenAI: Enforce structured output matching schema |
   | `cacheable` | `boolean()` | `true` | Anthropic: Allow caching of tool definition |
-  | `approval_required` | `boolean()` | `false` | Require user approval before execution |
+  | `approval_required` | `boolean()` | `true` | Require user approval before execution |
   | `timeout` | `pos_integer() \\| nil` | `nil` | Max execution time in milliseconds |
   | `sequential` | `boolean()` | `false` | If true, only one instance can execute at a time |
 
@@ -108,7 +108,7 @@ defmodule Msfailab.Tools.Tool do
     :timeout,
     strict: false,
     cacheable: true,
-    approval_required: false,
+    approval_required: true,
     sequential: false
   ]
 end
