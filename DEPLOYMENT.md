@@ -15,10 +15,10 @@ nano msfailab.conf
 
 # Start msfailab (runs in background)
 set -a && source msfailab.conf && set +a
-docker compose -f oci://ghcr.io/sarnowski/msfailab/compose.linux.release:latest up -d
+docker compose -f oci://ghcr.io/sarnowski/msfailab-linux:latest up -d
 
 # Stop msfailab
-docker compose -f oci://ghcr.io/sarnowski/msfailab/compose.linux.release:latest down
+docker compose -f oci://ghcr.io/sarnowski/msfailab-linux:latest down
 ```
 
 Read on to understand all deployment options and their trade-offs.
@@ -64,10 +64,10 @@ msfailab offers six deployment configurations across two dimensions:
 
 ```bash
 # Start
-docker compose -f oci://ghcr.io/sarnowski/msfailab/compose.linux.release:latest up -d
+docker compose -f oci://ghcr.io/sarnowski/msfailab-linux:latest up -d
 
 # Stop
-docker compose -f oci://ghcr.io/sarnowski/msfailab/compose.linux.release:latest down
+docker compose -f oci://ghcr.io/sarnowski/msfailab-linux:latest down
 ```
 
 **Advantages:**
@@ -111,10 +111,10 @@ docker compose -f compose.linux.local.yaml down
 
 ```bash
 # Start
-docker compose -f oci://ghcr.io/sarnowski/msfailab/compose.macos.release:latest up -d
+docker compose -f oci://ghcr.io/sarnowski/msfailab-macos:latest up -d
 
 # Stop
-docker compose -f oci://ghcr.io/sarnowski/msfailab/compose.macos.release:latest down
+docker compose -f oci://ghcr.io/sarnowski/msfailab-macos:latest down
 ```
 
 **Advantages:**

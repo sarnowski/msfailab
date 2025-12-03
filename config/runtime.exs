@@ -25,6 +25,22 @@ if System.get_env("PHX_SERVER") do
   config :msfailab, MsfailabWeb.Endpoint, server: true
 end
 
+# Runtime log level configuration
+# MSFAILAB_LOG_LEVEL: debug, info, warning, error (default: info in prod, debug in dev/test)
+if log_level = System.get_env("MSFAILAB_LOG_LEVEL") do
+  level =
+    case log_level do
+      "debug" -> :debug
+      "info" -> :info
+      "warning" -> :warning
+      "warn" -> :warning
+      "error" -> :error
+      _ -> :info
+    end
+
+  config :logger, level: level
+end
+
 config :msfailab, MsfailabWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("MSFAILAB_PORT", "4000"))]
 

@@ -69,9 +69,19 @@ defmodule Msfailab.LLMCase do
     # This requires tests to run with async: false.
     Mox.set_mox_global(self())
 
+    # Clean up env vars that may be set externally (e.g., in user's shell)
+    # and would interfere with tests
+    saved_default_model = System.get_env("MSFAILAB_DEFAULT_MODEL")
+    System.delete_env("MSFAILAB_DEFAULT_MODEL")
+
     on_exit(fn ->
       # Clean up provider config after each test
       Application.delete_env(:msfailab, :llm_providers)
+
+      # Restore the saved env var if it was set
+      if saved_default_model do
+        System.put_env("MSFAILAB_DEFAULT_MODEL", saved_default_model)
+      end
     end)
 
     :ok

@@ -56,7 +56,7 @@ defmodule MsfailabWeb.WorkspaceOverviewLive do
           </h1>
           <!-- Tagline/slogan -->
           <p class="text-xl text-base-content/70 max-w-2xl mx-auto">
-            Collaborative security research with AI agents as first-class research partners
+            Collaborative security research platform with AI agents as first-class research partners
           </p>
         </section>
         

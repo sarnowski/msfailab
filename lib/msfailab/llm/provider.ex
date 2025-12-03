@@ -104,7 +104,8 @@ defmodule Msfailab.LLM.Provider do
   """
   @spec filter_models([Model.t()], String.t(), String.t()) :: [Model.t()]
   def filter_models(models, env_var, default_filter) do
-    filter = System.get_env(env_var, default_filter)
+    # Treat empty string same as unset - use default
+    filter = get_env_or_default(env_var, default_filter)
 
     patterns =
       filter
@@ -116,6 +117,22 @@ defmodule Msfailab.LLM.Provider do
     |> Enum.filter(fn model -> matches_any_pattern?(model.name, patterns) end)
     |> Enum.uniq_by(& &1.name)
     |> Enum.sort_by(& &1.name, :desc)
+  end
+
+  @doc """
+  Gets an environment variable, treating empty string as unset.
+
+  Docker compose passes `VAR: ${VAR:-}` which sets the var to empty string
+  when unset, bypassing System.get_env/2's default. This function treats
+  both nil and empty string as "use default".
+  """
+  @spec get_env_or_default(String.t(), String.t()) :: String.t()
+  def get_env_or_default(env_var, default) do
+    case System.get_env(env_var) do
+      nil -> default
+      "" -> default
+      value -> value
+    end
   end
 
   # Convert a glob pattern with * wildcards to a regex

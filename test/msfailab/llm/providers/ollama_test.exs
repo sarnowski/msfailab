@@ -49,17 +49,28 @@ defmodule Msfailab.LLM.Providers.OllamaTest do
 
       req_opts = [
         plug: fn conn ->
-          # Verify the request was made to correct URL
-          assert conn.host == "192.168.1.10"
-          assert conn.port == 11_434
+          case conn.request_path do
+            "/api/tags" ->
+              # Verify the request was made to correct URL
+              assert conn.host == "192.168.1.10"
+              assert conn.port == 11_434
 
-          conn
-          |> Plug.Conn.put_resp_content_type("application/json")
-          |> Plug.Conn.send_resp(200, Jason.encode!(%{"models" => []}))
+              conn
+              |> Plug.Conn.put_resp_content_type("application/json")
+              |> Plug.Conn.send_resp(
+                200,
+                Jason.encode!(%{"models" => [%{"name" => "llama3:latest"}]})
+              )
+
+            "/api/show" ->
+              conn
+              |> Plug.Conn.put_resp_content_type("application/json")
+              |> Plug.Conn.send_resp(200, Jason.encode!(%{"model_info" => %{}}))
+          end
         end
       ]
 
-      assert {:ok, []} = Ollama.list_models(req_opts)
+      assert {:ok, [_model]} = Ollama.list_models(req_opts)
       System.delete_env("MSFAILAB_OLLAMA_HOST")
     end
 
@@ -68,17 +79,28 @@ defmodule Msfailab.LLM.Providers.OllamaTest do
 
       req_opts = [
         plug: fn conn ->
-          assert conn.scheme == :http
-          assert conn.host == "localhost"
-          assert conn.port == 11_434
+          case conn.request_path do
+            "/api/tags" ->
+              assert conn.scheme == :http
+              assert conn.host == "localhost"
+              assert conn.port == 11_434
 
-          conn
-          |> Plug.Conn.put_resp_content_type("application/json")
-          |> Plug.Conn.send_resp(200, Jason.encode!(%{"models" => []}))
+              conn
+              |> Plug.Conn.put_resp_content_type("application/json")
+              |> Plug.Conn.send_resp(
+                200,
+                Jason.encode!(%{"models" => [%{"name" => "llama3:latest"}]})
+              )
+
+            "/api/show" ->
+              conn
+              |> Plug.Conn.put_resp_content_type("application/json")
+              |> Plug.Conn.send_resp(200, Jason.encode!(%{"model_info" => %{}}))
+          end
         end
       ]
 
-      assert {:ok, []} = Ollama.list_models(req_opts)
+      assert {:ok, [_model]} = Ollama.list_models(req_opts)
       System.delete_env("MSFAILAB_OLLAMA_HOST")
     end
 
@@ -87,16 +109,27 @@ defmodule Msfailab.LLM.Providers.OllamaTest do
 
       req_opts = [
         plug: fn conn ->
-          assert conn.scheme == :https
-          assert conn.host == "ollama.example.com"
+          case conn.request_path do
+            "/api/tags" ->
+              assert conn.scheme == :https
+              assert conn.host == "ollama.example.com"
 
-          conn
-          |> Plug.Conn.put_resp_content_type("application/json")
-          |> Plug.Conn.send_resp(200, Jason.encode!(%{"models" => []}))
+              conn
+              |> Plug.Conn.put_resp_content_type("application/json")
+              |> Plug.Conn.send_resp(
+                200,
+                Jason.encode!(%{"models" => [%{"name" => "llama3:latest"}]})
+              )
+
+            "/api/show" ->
+              conn
+              |> Plug.Conn.put_resp_content_type("application/json")
+              |> Plug.Conn.send_resp(200, Jason.encode!(%{"model_info" => %{}}))
+          end
         end
       ]
 
-      assert {:ok, []} = Ollama.list_models(req_opts)
+      assert {:ok, [_model]} = Ollama.list_models(req_opts)
       System.delete_env("MSFAILAB_OLLAMA_HOST")
     end
 
@@ -105,16 +138,25 @@ defmodule Msfailab.LLM.Providers.OllamaTest do
 
       req_opts = [
         plug: fn conn ->
-          # Path should be /api/tags not //api/tags
-          assert conn.request_path == "/api/tags"
+          case conn.request_path do
+            "/api/tags" ->
+              # Path should be /api/tags not //api/tags
+              conn
+              |> Plug.Conn.put_resp_content_type("application/json")
+              |> Plug.Conn.send_resp(
+                200,
+                Jason.encode!(%{"models" => [%{"name" => "llama3:latest"}]})
+              )
 
-          conn
-          |> Plug.Conn.put_resp_content_type("application/json")
-          |> Plug.Conn.send_resp(200, Jason.encode!(%{"models" => []}))
+            "/api/show" ->
+              conn
+              |> Plug.Conn.put_resp_content_type("application/json")
+              |> Plug.Conn.send_resp(200, Jason.encode!(%{"model_info" => %{}}))
+          end
         end
       ]
 
-      assert {:ok, []} = Ollama.list_models(req_opts)
+      assert {:ok, [_model]} = Ollama.list_models(req_opts)
       System.delete_env("MSFAILAB_OLLAMA_HOST")
     end
   end
@@ -251,7 +293,7 @@ defmodule Msfailab.LLM.Providers.OllamaTest do
       assert {:error, {:unexpected_status, 500}} = Ollama.list_models(req_opts)
     end
 
-    test "returns empty list when no models pulled" do
+    test "returns error when no models pulled" do
       req_opts = [
         plug: fn conn ->
           conn
@@ -260,7 +302,8 @@ defmodule Msfailab.LLM.Providers.OllamaTest do
         end
       ]
 
-      assert {:ok, []} = Ollama.list_models(req_opts)
+      # Empty model list from API is now an error condition
+      assert {:error, :no_models_from_api} = Ollama.list_models(req_opts)
     end
   end
 

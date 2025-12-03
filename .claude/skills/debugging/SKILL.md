@@ -205,3 +205,11 @@ debugging (find the bug) → development (test + fix) → finishing-work (verify
 Common mistake: Jumping straight from "I found it!" to writing the fix. This skips the regression test that prevents the bug from recurring.
 
 **Exception:** If the fix is purely adding/modifying log statements with no behavioral changes, you can skip the development skill and go directly to finishing-work.
+
+**WARNING: The logging exception is NOT a gateway.** If you start with logging but then find yourself:
+- Adding or modifying functions
+- Changing return types or error handling
+- Fixing environment variable handling
+- Refactoring any code path
+
+**STOP immediately.** The scope has expanded beyond logging. Invoke the `development` skill before continuing. This is a common trap—don't rationalize "I already started" as permission to skip TDD.

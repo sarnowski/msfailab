@@ -117,22 +117,48 @@ defmodule Msfailab.LLM.Providers.Ollama do
 
   @spec fetch_model_names(keyword()) :: {:ok, [String.t()]} | {:error, term()}
   defp fetch_model_names(req_opts) do
-    case Req.get(host() <> "/api/tags", req_opts) do
+    url = host() <> "/api/tags"
+
+    case Req.get(url, req_opts) do
       {:ok, %{status: 200, body: %{"models" => models}}} ->
         names = Enum.map(models, & &1["name"])
-        {:ok, names}
 
-      {:ok, %{status: status}} ->
+        Logger.debug("Ollama API returned models",
+          url: url,
+          count: length(names),
+          models: names
+        )
+
+        if names == [] do
+          Logger.warning("Ollama API returned empty model list", url: url)
+          {:error, :no_models_from_api}
+        else
+          {:ok, names}
+        end
+
+      {:ok, %{status: status, body: body}} ->
+        Logger.warning("Ollama API returned unexpected status",
+          url: url,
+          status: status,
+          body: inspect(body)
+        )
+
         {:error, {:unexpected_status, status}}
 
       {:error, reason} ->
+        Logger.warning("Ollama API request failed",
+          url: url,
+          reason: inspect(reason)
+        )
+
         {:error, reason}
     end
   end
 
-  @spec fetch_model_details([String.t()], keyword()) :: {:ok, [Model.t()]}
+  @spec fetch_model_details([String.t()], keyword()) ::
+          {:ok, [Model.t()]} | {:error, term()}
   defp fetch_model_details(model_names, req_opts) do
-    models =
+    fetched =
       model_names
       |> Task.async_stream(&fetch_single_model(&1, req_opts), timeout: 30_000, max_concurrency: 5)
       |> Enum.reduce([], fn
@@ -140,9 +166,34 @@ defmodule Msfailab.LLM.Providers.Ollama do
         {:ok, {:error, _reason}}, acc -> acc
         {:exit, _reason}, acc -> acc
       end)
-      |> Provider.filter_models("MSFAILAB_OLLAMA_MODEL_FILTER", @default_model_filter)
 
-    {:ok, models}
+    Logger.debug("Ollama models after fetching details",
+      count: length(fetched),
+      models: Enum.map(fetched, & &1.name)
+    )
+
+    filter = Provider.get_env_or_default("MSFAILAB_OLLAMA_MODEL_FILTER", @default_model_filter)
+
+    filtered =
+      Provider.filter_models(fetched, "MSFAILAB_OLLAMA_MODEL_FILTER", @default_model_filter)
+
+    Logger.debug("Ollama models after filter_models",
+      filter: filter,
+      count: length(filtered),
+      models: Enum.map(filtered, & &1.name)
+    )
+
+    if filtered == [] do
+      Logger.warning("Ollama: all models filtered out",
+        api_count: length(model_names),
+        fetched_count: length(fetched),
+        filter: filter
+      )
+
+      {:error, {:all_models_filtered, filter}}
+    else
+      {:ok, filtered}
+    end
   end
 
   @spec fetch_single_model(String.t(), keyword()) :: {:ok, Model.t()} | {:error, term()}

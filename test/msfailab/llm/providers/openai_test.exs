@@ -181,7 +181,7 @@ defmodule Msfailab.LLM.Providers.OpenAITest do
       assert {:error, {:unexpected_status, 500}} = OpenAI.list_models(req_opts)
     end
 
-    test "returns empty list when no supported models" do
+    test "returns error when no supported models" do
       req_opts = [
         plug: fn conn ->
           conn
@@ -198,7 +198,8 @@ defmodule Msfailab.LLM.Providers.OpenAITest do
         end
       ]
 
-      assert {:ok, []} = OpenAI.list_models(req_opts)
+      # API returns models but none are supported (embeddings/whisper not chat models)
+      assert {:error, {:all_models_filtered, "*"}} = OpenAI.list_models(req_opts)
     end
   end
 

@@ -27,6 +27,15 @@ This skill defines how we write code in this project. **All behavioral code chan
 - "I already know the fix" — Write the failing test first anyway
 - "I'm in debugging mode" — Debugging identifies the problem; this skill fixes it properly
 - "It's obvious what's wrong" — Obvious bugs still need regression tests
+- "I started with logging" — If scope expanded beyond logging, STOP and invoke this skill
+
+**Scope creep checkpoint:** If your "simple fix" grows to include:
+- New functions or modified function signatures
+- Changed return types (e.g., `{:ok, []}` → `{:error, reason}`)
+- Modified control flow or error handling
+- Any refactoring of existing code
+
+**STOP and invoke this skill.** "I already started implementing" is not permission to skip TDD—it's a sign you should have invoked this skill earlier. Delete the implementation and start with the test.
 
 ### The Debugging → Development Handoff
 

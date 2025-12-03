@@ -122,23 +122,75 @@ defmodule Msfailab.LLM.Providers.OpenAI do
 
     case Req.get(@base_url <> "/models", [headers: auth_headers()] ++ merged_opts) do
       {:ok, %{status: 200, body: %{"data" => models}}} ->
-        filtered =
-          models
-          |> Enum.filter(&supported_model?/1)
-          |> Enum.map(&to_model/1)
-          |> Provider.filter_models("MSFAILAB_OPENAI_MODEL_FILTER", @default_model_filter)
-
-        {:ok, filtered}
+        process_model_response(models)
 
       {:ok, %{status: 401}} ->
+        Logger.warning("OpenAI API returned 401 - invalid API key")
         {:error, :invalid_api_key}
 
-      {:ok, %{status: status}} ->
+      {:ok, %{status: status, body: body}} ->
+        Logger.warning("OpenAI API returned unexpected status",
+          status: status,
+          body: inspect(body)
+        )
+
         {:error, {:unexpected_status, status}}
 
       {:error, reason} ->
+        Logger.warning("OpenAI API request failed", reason: inspect(reason))
         {:error, reason}
     end
+  end
+
+  defp process_model_response([]) do
+    Logger.warning("OpenAI API returned empty model list")
+    {:error, :no_models_from_api}
+  end
+
+  defp process_model_response(models) do
+    model_ids = Enum.map(models, & &1["id"])
+
+    Logger.debug("OpenAI API returned models",
+      count: length(models),
+      models: model_ids
+    )
+
+    supported = Enum.filter(models, &supported_model?/1)
+
+    Logger.debug("OpenAI models after supported_model? filter",
+      count: length(supported),
+      models: Enum.map(supported, & &1["id"])
+    )
+
+    filter =
+      Provider.get_env_or_default("MSFAILAB_OPENAI_MODEL_FILTER", @default_model_filter)
+
+    filtered =
+      supported
+      |> Enum.map(&to_model/1)
+      |> Provider.filter_models("MSFAILAB_OPENAI_MODEL_FILTER", @default_model_filter)
+
+    Logger.debug("OpenAI models after filter_models",
+      filter: filter,
+      count: length(filtered),
+      models: Enum.map(filtered, & &1.name)
+    )
+
+    validate_filtered_result(filtered, length(models), length(supported), filter)
+  end
+
+  defp validate_filtered_result([], api_count, supported_count, filter) do
+    Logger.warning("OpenAI: all models filtered out",
+      api_count: api_count,
+      supported_count: supported_count,
+      filter: filter
+    )
+
+    {:error, {:all_models_filtered, filter}}
+  end
+
+  defp validate_filtered_result(filtered, _api_count, _supported_count, _filter) do
+    {:ok, filtered}
   end
 
   defp supported_model?(%{"id" => id}) do

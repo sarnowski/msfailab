@@ -46,7 +46,13 @@ EOF
 
 # Load configuration and start msfailab
 set -a && source msfailab.conf && set +a
-docker compose -f oci://ghcr.io/sarnowski/msfailab/compose.linux.release:latest up -d
+docker compose -f oci://ghcr.io/sarnowski/msfailab-linux:latest up -d
+```
+
+To update to the latest version, add `--pull always`:
+
+```bash
+docker compose -f oci://ghcr.io/sarnowski/msfailab-linux:latest up -d --pull always
 ```
 
 Open http://localhost:4000 in your browser.
@@ -60,7 +66,13 @@ macOS users should use the macOS-specific compose file due to Docker Desktop net
 ```bash
 # Load configuration and start msfailab
 set -a && source msfailab.conf && set +a
-docker compose -f oci://ghcr.io/sarnowski/msfailab/compose.macos.release:latest up -d
+docker compose -f oci://ghcr.io/sarnowski/msfailab-macos:latest up -d
+```
+
+To update to the latest version, add `--pull always`:
+
+```bash
+docker compose -f oci://ghcr.io/sarnowski/msfailab-macos:latest up -d --pull always
 ```
 
 **Note:** Reverse shells don't work on macOS due to Docker Desktop limitations. See [DEPLOYMENT.md](DEPLOYMENT.md) for details.

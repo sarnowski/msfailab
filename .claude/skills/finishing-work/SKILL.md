@@ -21,23 +21,29 @@ Invoke this skill when ANY of these are true:
 
 **If you modified ANY files in the repository → you MUST invoke this skill.**
 
-This includes Elixir code (.ex, .exs, .heex), configuration (YAML, JSON, TOML), CI/CD workflows, Docker files, documentation, and anything else.
+This includes Elixir code (.ex, .exs, .heex), configuration (YAML, JSON, TOML), CI/CD workflows, Docker files, documentation, skill files (.claude/), and anything else.
+
+**Common skip rationalizations — these are WRONG:**
+- "It's just markdown/docs" — PENDING.md still needs the entry
+- "It's just config/workflow files" — Still needs recording
+- "I was helping, not developing" — If you used Edit/Write tools, you were developing
+- "The changes are small" — Small changes still need tracking
 
 ## The Completion Checklist
 
-### Step 1: Run Precommit
+### Step 1: Run Precommit (if code changed)
 
 ```bash
 mix precommit
 ```
 
-**Must pass with zero issues.** If it fails:
+**Run this only when Elixir or JavaScript code was modified.** Skip for markdown, CI/CD workflows (.github/), or Docker files—precommit won't check those.
+
+If it fails:
 
 1. Fix issues in priority order: compiler → dialyzer → sobelow → tests → credo
 2. Re-run `mix precommit`
 3. Repeat until clean
-
-Do NOT proceed to Step 2 until precommit passes.
 
 ### Step 2: Record Changes to PENDING.md
 
@@ -77,7 +83,7 @@ The subsystem affected: `tracks`, `containers`, `workspaces`, `events`, `web`, `
 
 Before responding to user:
 
-- [ ] `mix precommit` passed
+- [ ] `mix precommit` passed (if Elixir or JavaScript code was modified)
 - [ ] PENDING.md entry added
 - [ ] Files list in entry matches actual changes
 
@@ -115,9 +121,9 @@ If you did two unrelated things, write two entries. Related changes (feature + i
 ## Example Complete Flow
 
 ```
-1. [You complete a feature]
+1. [You complete a task]
 2. [STOP - invoke finishing-work]
-3. Run: mix precommit
+3. Run: mix precommit (if Elixir/JS was modified)
 4. [Fix any issues, re-run until clean]
 5. Append entry to PENDING.md
 6. [Now respond to user with summary]
@@ -126,5 +132,7 @@ If you did two unrelated things, write two entries. Related changes (feature + i
 ## Quick Reference
 
 ```
-Modified ANY files? → STOP → mix precommit → PENDING.md → respond to user
+Modified ANY files? → STOP → invoke this skill
+Modified Elixir/JS? → mix precommit first
+Always → record in PENDING.md → respond to user
 ```

@@ -196,7 +196,7 @@ defmodule Msfailab.LLM.Providers.AnthropicTest do
       assert {:error, {:unexpected_status, 500}} = Anthropic.list_models(req_opts)
     end
 
-    test "returns empty list when no supported models" do
+    test "returns error when no supported models" do
       req_opts = [
         plug: fn conn ->
           conn
@@ -212,7 +212,8 @@ defmodule Msfailab.LLM.Providers.AnthropicTest do
         end
       ]
 
-      assert {:ok, []} = Anthropic.list_models(req_opts)
+      # API returns models but none are supported (non-claude model)
+      assert {:error, {:all_models_filtered, "*"}} = Anthropic.list_models(req_opts)
     end
   end
 

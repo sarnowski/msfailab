@@ -135,8 +135,8 @@ jobs:
       - name: Publish Linux release compose file
         run: |
           docker compose version
-          docker compose -f compose.linux.release.yaml publish --yes ${{ env.REGISTRY }}/${{ github.repository }}/compose.linux.release:latest
+          docker compose -f compose.linux.release.yaml publish --yes ${{ env.REGISTRY }}/${{ github.repository }}-linux:latest
 
       - name: Publish macOS release compose file
         run: |
-          docker compose -f compose.macos.release.yaml publish --yes ${{ env.REGISTRY }}/${{ github.repository }}/compose.macos.release:latest
+          docker compose -f compose.macos.release.yaml publish --yes ${{ env.REGISTRY }}/${{ github.repository }}-macos:latest

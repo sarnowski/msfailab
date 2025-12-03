@@ -55,6 +55,8 @@ defmodule Msfailab.LLM.Providers.Anthropic do
 
   @behaviour Msfailab.LLM.Provider
 
+  require Logger
+
   alias Msfailab.LLM.ChatRequest
   alias Msfailab.LLM.Events
   alias Msfailab.LLM.Model
@@ -116,23 +118,75 @@ defmodule Msfailab.LLM.Providers.Anthropic do
 
     case Req.get(@base_url <> "/models", [headers: auth_headers()] ++ merged_opts) do
       {:ok, %{status: 200, body: %{"data" => models}}} ->
-        filtered =
-          models
-          |> Enum.filter(&supported_model?/1)
-          |> Enum.map(&to_model/1)
-          |> Provider.filter_models("MSFAILAB_ANTHROPIC_MODEL_FILTER", @default_model_filter)
-
-        {:ok, filtered}
+        process_model_response(models)
 
       {:ok, %{status: 401}} ->
+        Logger.warning("Anthropic API returned 401 - invalid API key")
         {:error, :invalid_api_key}
 
-      {:ok, %{status: status}} ->
+      {:ok, %{status: status, body: body}} ->
+        Logger.warning("Anthropic API returned unexpected status",
+          status: status,
+          body: inspect(body)
+        )
+
         {:error, {:unexpected_status, status}}
 
       {:error, reason} ->
+        Logger.warning("Anthropic API request failed", reason: inspect(reason))
         {:error, reason}
     end
+  end
+
+  defp process_model_response([]) do
+    Logger.warning("Anthropic API returned empty model list")
+    {:error, :no_models_from_api}
+  end
+
+  defp process_model_response(models) do
+    model_ids = Enum.map(models, & &1["id"])
+
+    Logger.debug("Anthropic API returned models",
+      count: length(models),
+      models: model_ids
+    )
+
+    supported = Enum.filter(models, &supported_model?/1)
+
+    Logger.debug("Anthropic models after supported_model? filter",
+      count: length(supported),
+      models: Enum.map(supported, & &1["id"])
+    )
+
+    filter =
+      Provider.get_env_or_default("MSFAILAB_ANTHROPIC_MODEL_FILTER", @default_model_filter)
+
+    filtered =
+      supported
+      |> Enum.map(&to_model/1)
+      |> Provider.filter_models("MSFAILAB_ANTHROPIC_MODEL_FILTER", @default_model_filter)
+
+    Logger.debug("Anthropic models after filter_models",
+      filter: filter,
+      count: length(filtered),
+      models: Enum.map(filtered, & &1.name)
+    )
+
+    validate_filtered_result(filtered, length(models), length(supported), filter)
+  end
+
+  defp validate_filtered_result([], api_count, supported_count, filter) do
+    Logger.warning("Anthropic: all models filtered out",
+      api_count: api_count,
+      supported_count: supported_count,
+      filter: filter
+    )
+
+    {:error, {:all_models_filtered, filter}}
+  end
+
+  defp validate_filtered_result(filtered, _api_count, _supported_count, _filter) do
+    {:ok, filtered}
   end
 
   defp supported_model?(%{"type" => "model", "id" => id}) do
