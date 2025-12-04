@@ -793,6 +793,11 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
   # ===========================================================================
 
   describe "start_turn/5" do
+    setup do
+      start_supervised!({Msfailab.Skills.Registry, skills: []})
+      :ok
+    end
+
     test "creates turn and returns actions" do
       stream = StreamState.new(1)
       entries = []
@@ -819,6 +824,37 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
 
       assert {:start_llm, _request} = Enum.find(actions, &match?({:start_llm, _}, &1))
     end
+
+    test "returns lazy LLM params instead of pre-built ChatRequest (bug fix: first prompt missing)" do
+      # BUG: Previously, start_turn built the ChatRequest synchronously by loading
+      # entries from the DB. But the user message wasn't persisted yet (it's in the
+      # actions list), so the first user prompt was missing from the LLM request.
+      #
+      # FIX: Return lazy params {track_id, model, cache_context} and build the
+      # ChatRequest in Action.execute AFTER persist_message has run.
+
+      stream = StreamState.new(1)
+      entries = []
+      track_id = 999
+      context = %{track_id: track_id}
+
+      {:ok, _new_turn, _new_stream, _new_entries, actions} =
+        Turn.start_turn(stream, entries, "Hello!", "gpt-4", context)
+
+      # Find the :start_llm action
+      {:start_llm, params} = Enum.find(actions, &match?({:start_llm, _}, &1))
+
+      # CRITICAL: params should be a map with lazy parameters, NOT a ChatRequest struct
+      # This allows Action.execute to build the request AFTER the message is persisted
+      refute match?(%Msfailab.LLM.ChatRequest{}, params),
+             "Expected lazy params map, got pre-built ChatRequest"
+
+      assert is_map(params), "Expected params to be a map"
+      assert Map.has_key?(params, :track_id), "Expected params to have :track_id"
+      assert Map.has_key?(params, :model), "Expected params to have :model"
+      assert params.track_id == track_id
+      assert params.model == "gpt-4"
+    end
   end
 
   # ===========================================================================
@@ -826,6 +862,11 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
   # ===========================================================================
 
   describe "reconcile/4 - LLM continuation" do
+    setup do
+      start_supervised!({Msfailab.Skills.Registry, skills: []})
+      :ok
+    end
+
     test "starts next LLM request when all tools are terminal" do
       tool_inv = make_tool_invocation("call_1", "execute_msfconsole_command", :success)
 
@@ -1040,6 +1081,276 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
                {:update_tool_status, 1, "success", _} -> true
                _ -> false
              end)
+    end
+  end
+
+  # ===========================================================================
+  # Cancel Turn Tests
+  # ===========================================================================
+
+  describe "cancel_turn/2 - inactive turns" do
+    test "returns :no_active_turn when status is :idle" do
+      turn = make_turn(status: :idle)
+
+      assert :no_active_turn = Turn.cancel_turn(turn, [])
+    end
+
+    test "returns :no_active_turn when status is :finished" do
+      turn = make_turn(status: :finished)
+
+      assert :no_active_turn = Turn.cancel_turn(turn, [])
+    end
+
+    test "returns :no_active_turn when status is :error" do
+      turn = make_turn(status: :error)
+
+      assert :no_active_turn = Turn.cancel_turn(turn, [])
+    end
+
+    test "returns :no_active_turn when status is :cancelled" do
+      turn = make_turn(status: :cancelled)
+
+      assert :no_active_turn = Turn.cancel_turn(turn, [])
+    end
+  end
+
+  describe "cancel_turn/2 - active turns" do
+    test "cancels turn from :pending status and clears llm_ref" do
+      llm_ref = make_ref()
+      turn = make_turn(status: :pending, turn_id: "turn-123", llm_ref: llm_ref)
+
+      {new_turn, _entries, actions} = Turn.cancel_turn(turn, [])
+
+      assert new_turn.status == :cancelled
+      assert new_turn.llm_ref == nil
+      assert {:update_turn_status, "turn-123", "cancelled"} in actions
+      assert :broadcast_chat_state in actions
+    end
+
+    test "cancels turn from :streaming status" do
+      llm_ref = make_ref()
+      turn = make_turn(status: :streaming, turn_id: "turn-456", llm_ref: llm_ref)
+
+      {new_turn, _entries, actions} = Turn.cancel_turn(turn, [])
+
+      assert new_turn.status == :cancelled
+      assert new_turn.llm_ref == nil
+      assert {:update_turn_status, "turn-456", "cancelled"} in actions
+    end
+
+    test "cancels turn from :pending_approval status" do
+      tool_inv = make_tool_invocation("call_1", "execute_msfconsole_command", :pending)
+
+      turn =
+        make_turn(
+          status: :pending_approval,
+          turn_id: "turn-789",
+          tool_invocations: %{1 => tool_inv}
+        )
+
+      {new_turn, _entries, _actions} = Turn.cancel_turn(turn, [])
+
+      assert new_turn.status == :cancelled
+    end
+
+    test "cancels turn from :executing_tools status" do
+      tool_inv = make_tool_invocation("call_1", "execute_msfconsole_command", :executing)
+
+      turn =
+        make_turn(
+          status: :executing_tools,
+          turn_id: "turn-abc",
+          tool_invocations: %{1 => tool_inv}
+        )
+
+      {new_turn, _entries, _actions} = Turn.cancel_turn(turn, [])
+
+      assert new_turn.status == :cancelled
+    end
+  end
+
+  describe "cancel_turn/2 - tool cancellation" do
+    test "marks pending tools as :cancelled" do
+      tool_inv = make_tool_invocation("call_1", "execute_msfconsole_command", :pending)
+      entry = make_tool_entry(1, 1, "execute_msfconsole_command", :pending)
+      turn = make_turn(status: :pending_approval, tool_invocations: %{1 => tool_inv})
+
+      {new_turn, new_entries, actions} = Turn.cancel_turn(turn, [entry])
+
+      assert new_turn.tool_invocations[1].status == :cancelled
+      assert Enum.at(new_entries, 0).tool_status == :cancelled
+
+      assert {:update_tool_status, 1, "cancelled",
+              [error_message: "User cancelled the execution"]} in actions
+    end
+
+    test "marks approved tools as :cancelled" do
+      tool_inv = make_tool_invocation("call_1", "execute_msfconsole_command", :approved)
+      entry = make_tool_entry(1, 1, "execute_msfconsole_command", :approved)
+      turn = make_turn(status: :executing_tools, tool_invocations: %{1 => tool_inv})
+
+      {new_turn, new_entries, actions} = Turn.cancel_turn(turn, [entry])
+
+      assert new_turn.tool_invocations[1].status == :cancelled
+      assert Enum.at(new_entries, 0).tool_status == :cancelled
+
+      assert {:update_tool_status, 1, "cancelled",
+              [error_message: "User cancelled the execution"]} in actions
+    end
+
+    test "marks executing tools as :cancelled" do
+      tool_inv =
+        make_tool_invocation("call_1", "execute_msfconsole_command", :executing,
+          command_id: "cmd-1"
+        )
+
+      entry = make_tool_entry(1, 1, "execute_msfconsole_command", :executing)
+
+      turn =
+        make_turn(
+          status: :executing_tools,
+          tool_invocations: %{1 => tool_inv},
+          command_to_tool: %{"cmd-1" => 1}
+        )
+
+      {new_turn, new_entries, actions} = Turn.cancel_turn(turn, [entry])
+
+      assert new_turn.tool_invocations[1].status == :cancelled
+      assert Enum.at(new_entries, 0).tool_status == :cancelled
+
+      assert {:update_tool_status, 1, "cancelled",
+              [error_message: "User cancelled the execution"]} in actions
+    end
+
+    test "preserves terminal tool states (success, error, denied, timeout)" do
+      success_inv = make_tool_invocation("call_1", "execute_msfconsole_command", :success)
+      denied_inv = make_tool_invocation("call_2", "execute_bash_command", :denied)
+      error_inv = make_tool_invocation("call_3", "execute_bash_command", :error)
+      pending_inv = make_tool_invocation("call_4", "execute_bash_command", :pending)
+
+      turn =
+        make_turn(
+          status: :executing_tools,
+          tool_invocations: %{
+            1 => success_inv,
+            2 => denied_inv,
+            3 => error_inv,
+            4 => pending_inv
+          }
+        )
+
+      {new_turn, _entries, actions} = Turn.cancel_turn(turn, [])
+
+      # Terminal states should be preserved
+      assert new_turn.tool_invocations[1].status == :success
+      assert new_turn.tool_invocations[2].status == :denied
+      assert new_turn.tool_invocations[3].status == :error
+      # Only non-terminal state should be cancelled
+      assert new_turn.tool_invocations[4].status == :cancelled
+
+      # Only the pending tool should have an update action
+      assert {:update_tool_status, 4, "cancelled",
+              [error_message: "User cancelled the execution"]} in actions
+
+      refute Enum.any?(actions, &match?({:update_tool_status, 1, _, _}, &1))
+      refute Enum.any?(actions, &match?({:update_tool_status, 2, _, _}, &1))
+      refute Enum.any?(actions, &match?({:update_tool_status, 3, _, _}, &1))
+    end
+
+    test "clears command_to_tool mapping" do
+      tool_inv =
+        make_tool_invocation("call_1", "execute_msfconsole_command", :executing,
+          command_id: "cmd-1"
+        )
+
+      turn =
+        make_turn(
+          status: :executing_tools,
+          tool_invocations: %{1 => tool_inv},
+          command_to_tool: %{"cmd-1" => 1}
+        )
+
+      {new_turn, _entries, _actions} = Turn.cancel_turn(turn, [])
+
+      assert new_turn.command_to_tool == %{}
+    end
+  end
+
+  describe "cancel_turn/2 - turn_id handling" do
+    test "includes update_turn_status action when turn_id present" do
+      turn = make_turn(status: :streaming, turn_id: "turn-123")
+
+      {_new_turn, _entries, actions} = Turn.cancel_turn(turn, [])
+
+      assert {:update_turn_status, "turn-123", "cancelled"} in actions
+    end
+
+    test "omits update_turn_status action when turn_id is nil" do
+      turn = make_turn(status: :streaming, turn_id: nil)
+
+      {_new_turn, _entries, actions} = Turn.cancel_turn(turn, [])
+
+      refute Enum.any?(actions, &match?({:update_turn_status, _, _}, &1))
+    end
+  end
+
+  describe "cancel_turn/2 - error_message for cancelled tools" do
+    test "includes error_message in update_tool_status opts for cancelled tools" do
+      tool_inv = make_tool_invocation("call_1", "execute_msfconsole_command", :executing)
+      entry = make_tool_entry(1, 1, "execute_msfconsole_command", :executing)
+      turn = make_turn(status: :executing_tools, tool_invocations: %{1 => tool_inv})
+
+      {_new_turn, _new_entries, actions} = Turn.cancel_turn(turn, [entry])
+
+      # Find the update_tool_status action for position 1
+      action = Enum.find(actions, &match?({:update_tool_status, 1, "cancelled", _}, &1))
+      assert action != nil
+
+      {:update_tool_status, 1, "cancelled", opts} = action
+      assert opts[:error_message] == "User cancelled the execution"
+    end
+  end
+
+  describe "reconcile/4 - cancelled turn" do
+    test "returns no_action when status is :cancelled (prevents LLM continuation)" do
+      # This test ensures that after a turn is cancelled, reconciliation won't
+      # trigger a new LLM request even if all tools are in terminal state
+      tool_inv = make_tool_invocation("call_1", "execute_msfconsole_command", :cancelled)
+
+      turn = make_turn(status: :cancelled, tool_invocations: %{1 => tool_inv})
+      console = make_console()
+      context = %{track_id: 1, model: "test", autonomous: false}
+
+      # Should return no_action because turn is cancelled (inactive)
+      assert :no_action = Turn.reconcile(turn, console, [], context)
+    end
+
+    test "treats :cancelled tools as terminal when checking all_tools_terminal" do
+      # When a turn has a mix of cancelled and other terminal tools,
+      # reconciliation should treat cancelled as terminal (won't wait for them)
+      cancelled_inv = make_tool_invocation("call_1", "execute_msfconsole_command", :cancelled)
+      success_inv = make_tool_invocation("call_2", "execute_bash_command", :success)
+
+      # Using :streaming status (not :cancelled) to test the all_tools_terminal logic
+      turn =
+        make_turn(
+          status: :streaming,
+          model: "gpt-4",
+          tool_invocations: %{1 => cancelled_inv, 2 => success_inv}
+        )
+
+      console = make_console()
+      context = %{track_id: 1, model: "gpt-4", autonomous: false}
+
+      # With Skills.Registry started, this should trigger LLM continuation
+      # because all tools are terminal (cancelled + success)
+      start_supervised!({Msfailab.Skills.Registry, skills: []})
+
+      {new_turn, _entries, actions} = Turn.reconcile(turn, console, [], context)
+
+      # Should transition to start next LLM request since all tools are terminal
+      assert new_turn.status == :pending
+      assert {:start_llm, _} = Enum.find(actions, &match?({:start_llm, _}, &1))
     end
   end
 

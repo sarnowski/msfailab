@@ -254,6 +254,22 @@ defmodule Msfailab.Tracks.TrackServer do
     GenServer.cast(via_tuple(track_id), {:set_autonomous, autonomous})
   end
 
+  @doc """
+  Cancels the current turn and all in-progress operations.
+
+  Cancels:
+  - Active LLM streaming (ignores subsequent events)
+  - Executing tool invocations (marked as cancelled)
+  - Running console commands (sends Ctrl+C)
+  - Running bash commands (kills Tasks)
+
+  Returns :ok if a turn was cancelled, {:error, :no_active_turn} if idle.
+  """
+  @spec cancel_turn(integer()) :: :ok | {:error, :no_active_turn}
+  def cancel_turn(track_id) do
+    GenServer.call(via_tuple(track_id), :cancel_turn)
+  end
+
   # ===========================================================================
   # GenServer Callbacks
   # ===========================================================================
@@ -271,11 +287,11 @@ defmodule Msfailab.Tracks.TrackServer do
       container_id: container_id
     )
 
-    # Load workspace to get slug (needed for MSF data tool scoping)
+    # Load workspace, track, and container to get slugs (needed for system prompt)
     workspace = Workspaces.get_workspace!(workspace_id)
-
-    # Load track settings from database
     track = Tracks.get_track(track_id)
+    container = Containers.get_container(container_id)
+
     autonomous = if track, do: track.autonomous, else: false
 
     # Load persisted console history (finished blocks only)
@@ -303,13 +319,19 @@ defmodule Msfailab.Tracks.TrackServer do
 
     # Create initial state using the State module
     # Note: Memory is not cached in TrackServer state - it's read from DB on demand
+    # Use defaults for slugs when records don't exist (e.g., in tests)
+    track_slug = if track, do: track.slug, else: "track-#{track_id}"
+    container_slug = if container, do: container.slug, else: "container-#{container_id}"
+
     state =
       State.from_persisted(
         %{
           track_id: track_id,
+          track_slug: track_slug,
           workspace_id: workspace_id,
           workspace_slug: workspace.slug,
-          container_id: container_id
+          container_id: container_id,
+          container_slug: container_slug
         },
         autonomous: autonomous,
         console_history: persisted_history,
@@ -446,6 +468,30 @@ defmodule Msfailab.Tracks.TrackServer do
 
       {:error, reason} ->
         {:reply, {:error, reason}, state}
+    end
+  end
+
+  def handle_call(:cancel_turn, _from, %State{} = state) do
+    alias Msfailab.Tracks.TrackServer.State.Stream, as: StreamState
+
+    case Turn.cancel_turn(state.turn, state.chat_entries) do
+      :no_active_turn ->
+        {:reply, {:error, :no_active_turn}, state}
+
+      {new_turn, new_entries, actions} ->
+        # Filter out streaming entries (not yet persisted)
+        persisted_entries = Enum.reject(new_entries, & &1.streaming)
+
+        # Reset stream state (clear blocks and documents)
+        new_stream = StreamState.reset(state.stream)
+
+        new_state = %{state | turn: new_turn, chat_entries: persisted_entries, stream: new_stream}
+        new_state = execute_actions(new_state, actions)
+
+        # Cancel external operations
+        cancel_external_operations(new_state)
+
+        {:reply, :ok, new_state}
     end
   end
 
@@ -1169,6 +1215,22 @@ defmodule Msfailab.Tracks.TrackServer do
           :exit, _ -> :ok
         end
     end
+  end
+
+  defp cancel_external_operations(%State{} = state) do
+    # Cancel console command if executing
+    if state.console.status == :busy do
+      Containers.cancel_console_command(state.container_id, state.track_id)
+    end
+
+    # Cancel bash commands that have command_ids
+    state.turn.command_to_tool
+    |> Map.keys()
+    |> Enum.each(fn command_id ->
+      Containers.cancel_bash_command(state.container_id, command_id)
+    end)
+
+    :ok
   end
 
   # coveralls-ignore-stop

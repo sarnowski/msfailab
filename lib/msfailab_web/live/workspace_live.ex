@@ -809,6 +809,20 @@ defmodule MsfailabWeb.WorkspaceLive do
     end
   end
 
+  @impl true
+  def handle_event("cancel_turn", _params, socket) do
+    track = socket.assigns.current_track
+
+    if track do
+      # Cancel the current turn and all in-progress operations
+      # Results are harmless: :ok if cancelled, {:error, :no_active_turn} if already idle
+      Tracks.cancel_turn(track.id)
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
   # ---------------------------------------------------------------------------
   # Keyboard Shortcut Event Handlers
   # ---------------------------------------------------------------------------

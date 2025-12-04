@@ -885,6 +885,43 @@ defmodule Msfailab.Containers do
     end
   end
 
+  @doc """
+  Cancels a running console command for a track.
+
+  Sends Ctrl+C to the console to interrupt the current command.
+
+  Returns `:ok` if cancellation was sent, or `{:error, reason}` on failure.
+  """
+  @spec cancel_console_command(integer(), integer()) :: :ok | {:error, atom()}
+  def cancel_console_command(container_record_id, track_id) do
+    case Container.whereis(container_record_id) do
+      nil ->
+        {:error, :container_not_running}
+
+      _pid ->
+        Container.cancel_console_command(container_record_id, track_id)
+    end
+  end
+
+  @doc """
+  Cancels a running bash command.
+
+  Kills the Task process executing the command.
+
+  Returns `:ok` if the command was cancelled, or `{:error, :not_found}` if not running.
+  """
+  @spec cancel_bash_command(integer(), String.t()) ::
+          :ok | {:error, :not_found | :container_not_running}
+  def cancel_bash_command(container_record_id, command_id) do
+    case Container.whereis(container_record_id) do
+      nil ->
+        {:error, :container_not_running}
+
+      _pid ->
+        Container.cancel_bash_command(container_record_id, command_id)
+    end
+  end
+
   # ============================================================================
   # RPC Endpoint Access
   # ============================================================================

@@ -145,9 +145,10 @@ defmodule Msfailab.Tracks.ChatToolInvocation do
 
   @primary_key {:entry_id, :id, autogenerate: false}
 
-  @statuses ~w(pending approved denied executing success error timeout)
+  @statuses ~w(pending approved denied executing success error timeout cancelled)
 
-  @type status :: :pending | :approved | :denied | :executing | :success | :error | :timeout
+  @type status ::
+          :pending | :approved | :denied | :executing | :success | :error | :timeout | :cancelled
 
   @type t :: %__MODULE__{
           entry_id: integer() | nil,
@@ -286,7 +287,7 @@ defmodule Msfailab.Tracks.ChatToolInvocation do
   @doc "Returns true if the invocation has a terminal status."
   @spec terminal?(t()) :: boolean()
   def terminal?(%__MODULE__{status: status}) do
-    status in ~w(denied success error timeout)
+    status in ~w(denied success error timeout cancelled)
   end
 
   @doc "Returns true if the invocation is awaiting approval."

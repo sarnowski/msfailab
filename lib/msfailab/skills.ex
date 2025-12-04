@@ -128,42 +128,29 @@ defmodule Msfailab.Skills do
   end
 
   @doc """
-  Generates a markdown overview of all available skills.
+  Generates a compact list of all available skills.
 
-  Used for injection into the chat context to inform the AI agent
-  about available skills.
+  Returns a markdown list suitable for injecting into the system prompt's
+  `{{SKILLS_LIBRARY}}` placeholder.
+
+  ## Example Output
+
+      - **metasploit_usecase_pentest** — Penetration testing methodology
+      - **pentest_reporting** — Structure and write professional reports
+
   """
   @spec generate_overview() :: String.t()
   def generate_overview do
     skills = list_skills()
 
     if skills == [] do
-      """
-      ## Skill Library
-
-      *No skills available*
-      """
+      "*No skills available*"
     else
-      table_rows =
-        skills
-        |> Enum.sort_by(& &1.name)
-        |> Enum.map_join("\n", fn skill -> "| #{skill.name} | #{skill.description} |" end)
-
-      """
-      ## Skill Library
-
-      You have access to a library of skills that can teach you specialized knowledge. Use the `learn_skill` tool to learn any skill listed below.
-
-      ### Available Skills
-
-      | Skill name | Description |
-      |------------|-------------|
-      #{table_rows}
-
-      ### How to Learn Skills
-
-      Read the description of each skill above. When you determine that a skill would help you with the current task, call the `learn_skill` tool with the skill name. The tool will return the full skill document that teaches you how to proceed.
-      """
+      skills
+      |> Enum.sort_by(& &1.name)
+      |> Enum.map_join("\n", fn skill ->
+        "- **#{skill.name}** — #{skill.description}"
+      end)
     end
   end
 end

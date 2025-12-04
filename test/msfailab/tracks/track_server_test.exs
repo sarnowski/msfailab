@@ -827,6 +827,77 @@ defmodule Msfailab.Tracks.TrackServerTest do
   end
 
   # ===========================================================================
+  # Cancel Turn Tests
+  # ===========================================================================
+
+  describe "cancel_turn/1" do
+    setup do
+      create_workspace_container_and_track()
+    end
+
+    test "removes streaming entries when cancelled during LLM streaming", %{track: track} do
+      alias Msfailab.Tracks.ChatEntry
+
+      Process.sleep(15)
+
+      # Get the TrackServer pid to send LLM events
+      pid = TrackServer.whereis(track.id)
+
+      # Create a mock LLM ref and simulate starting a turn
+      llm_ref = make_ref()
+
+      # Manually put the server into streaming state with entries
+      # We need to manipulate state to add streaming entries
+      # Since TrackServer doesn't expose direct state manipulation,
+      # we'll verify the behavior through get_chat_state
+
+      # First, send a prompt to start a turn (this is the normal flow)
+      # For this test, we'll manually inject streaming state
+      :sys.replace_state(pid, fn state ->
+        # Create a streaming entry (simulating LLM streaming)
+        streaming_entry =
+          ChatEntry.assistant_response(
+            Ecto.UUID.generate(),
+            1,
+            "Partial response...",
+            "<p>Partial response...</p>",
+            true
+          )
+
+        # Set turn to streaming status with the ref
+        new_turn = %{state.turn | status: :streaming, llm_ref: llm_ref}
+
+        # Update stream state to track the block
+        new_stream = %{state.stream | blocks: %{0 => 1}, next_position: 2}
+
+        %{state | turn: new_turn, chat_entries: [streaming_entry], stream: new_stream}
+      end)
+
+      # Verify streaming entry exists
+      chat_state_before = TrackServer.get_chat_state(track.id)
+      assert length(chat_state_before.entries) == 1
+      assert hd(chat_state_before.entries).streaming == true
+      assert chat_state_before.turn_status == :streaming
+
+      # Cancel the turn
+      :ok = TrackServer.cancel_turn(track.id)
+
+      # Verify streaming entries are removed
+      chat_state_after = TrackServer.get_chat_state(track.id)
+      assert chat_state_after.entries == [], "Streaming entries should be removed on cancel"
+      assert chat_state_after.turn_status == :cancelled
+    end
+
+    test "returns error when no active turn", %{track: track} do
+      Process.sleep(15)
+
+      # No turn started, should return error
+      result = TrackServer.cancel_turn(track.id)
+      assert {:error, :no_active_turn} = result
+    end
+  end
+
+  # ===========================================================================
   # Helper Functions
   # ===========================================================================
 

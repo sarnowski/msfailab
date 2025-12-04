@@ -565,5 +565,42 @@ defmodule Msfailab.Tracks.ChatContextTest do
 
       assert messages == []
     end
+
+    test "converts cancelled tool invocation to call + cancelled result", %{track: track} do
+      {:ok, turn} = ChatContext.create_turn(track.id, "gpt-4o")
+
+      {:ok, entry} =
+        ChatContext.create_tool_invocation_entry(track.id, turn.id, nil, 1, %{
+          tool_call_id: "call_1",
+          tool_name: "execute_msfconsole_command",
+          arguments: %{"command" => "help"}
+        })
+
+      # Mark as cancelled with error message
+      {:ok, _} =
+        ChatContext.update_tool_invocation(track.id, entry.position, "cancelled",
+          error_message: "User cancelled the execution"
+        )
+
+      entries = ChatContext.load_entries(track.id)
+      messages = ChatContext.entries_to_llm_messages(entries)
+
+      assert length(messages) == 2
+      [call_msg, result_msg] = messages
+
+      # First message should be the tool call from assistant
+      assert call_msg.role == :assistant
+
+      assert [%{type: :tool_call, id: "call_1", name: "execute_msfconsole_command"}] =
+               call_msg.content
+
+      # Second message should be the tool result with error
+      assert result_msg.role == :tool
+
+      assert [%{type: :tool_result, tool_call_id: "call_1", is_error: true, content: content}] =
+               result_msg.content
+
+      assert content =~ "cancelled"
+    end
   end
 end

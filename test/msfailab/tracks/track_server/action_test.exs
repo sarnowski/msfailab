@@ -39,9 +39,11 @@ defmodule Msfailab.Tracks.TrackServer.ActionTest do
   defp make_state(attrs \\ []) do
     %State{
       track_id: Keyword.get(attrs, :track_id, 1),
+      track_slug: Keyword.get(attrs, :track_slug, "test-track"),
       workspace_id: Keyword.get(attrs, :workspace_id, 1),
       workspace_slug: Keyword.get(attrs, :workspace_slug, "test-workspace"),
       container_id: Keyword.get(attrs, :container_id, 1),
+      container_slug: Keyword.get(attrs, :container_slug, "test-container"),
       autonomous: Keyword.get(attrs, :autonomous, false),
       console: Keyword.get(attrs, :console, ConsoleState.new()),
       stream: Keyword.get(attrs, :stream, StreamState.new(1)),
@@ -361,6 +363,55 @@ defmodule Msfailab.Tracks.TrackServer.ActionTest do
         end)
 
       assert log =~ "Failed to update turn status"
+    end
+  end
+
+  # ===========================================================================
+  # Start LLM Action Tests (Bug Fix: First Prompt Missing)
+  # ===========================================================================
+
+  describe "execute/2 - {:start_llm, params} with lazy params" do
+    setup do
+      start_supervised!({Msfailab.Skills.Registry, skills: []})
+      create_workspace_container_and_track()
+    end
+
+    test "builds ChatRequest from persisted entries (bug fix: first prompt included)", %{
+      track: track
+    } do
+      # BUG: Previously, start_turn built the ChatRequest BEFORE persisting the user
+      # message, so the first prompt was missing from the LLM request.
+      #
+      # FIX: Action.execute now receives lazy params and builds the ChatRequest
+      # from the database AFTER persist_message has run.
+      #
+      # This test verifies that when we persist a message and then execute
+      # {:start_llm, params}, the resulting request includes the persisted message.
+
+      # Step 1: Persist user message (simulates {:persist_message, ...} action)
+      {:ok, _entry} =
+        ChatContext.create_message_entry(track.id, nil, nil, 1, %{
+          role: "user",
+          message_type: "prompt",
+          content: "Hello, this is my first prompt!"
+        })
+
+      # Step 2: Verify the message is now in the DB
+      entries = ChatContext.load_entries(track.id)
+      assert length(entries) == 1
+      assert hd(entries).message.content == "Hello, this is my first prompt!"
+
+      # Step 3: Convert entries to LLM messages (this is what Action.execute should do)
+      messages = ChatContext.entries_to_llm_messages(entries)
+
+      # Step 4: Verify the user message is included in the LLM messages
+      assert length(messages) == 1
+      [user_message] = messages
+      assert user_message.role == :user
+
+      # Content is a list of content blocks
+      assert [%{type: :text, text: text}] = user_message.content
+      assert text == "Hello, this is my first prompt!"
     end
   end
 end

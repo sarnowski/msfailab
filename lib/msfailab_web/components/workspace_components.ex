@@ -978,7 +978,8 @@ defmodule MsfailabWeb.WorkspaceComponents do
   defp tool_status_icon(:success), do: "hero-check"
   defp tool_status_icon(:error), do: "hero-x-mark"
   defp tool_status_icon(:timeout), do: "hero-x-mark"
-  defp tool_status_icon(:declined), do: "hero-x-mark"
+  defp tool_status_icon(:denied), do: "hero-x-mark"
+  defp tool_status_icon(:cancelled), do: "hero-x-mark"
   defp tool_status_icon(_), do: "hero-question-mark-circle"
 
   # Renders a status icon for tool boxes
@@ -1164,10 +1165,10 @@ defmodule MsfailabWeb.WorkspaceComponents do
       <%= cond do %>
         <% @entry.tool_status == :executing -> %>
           <div class="text-xs text-base-content/50 italic">Executing...</div>
-        <% @entry.tool_status in [:error, :timeout] -> %>
+        <% @entry.error_message -> %>
           <div>
             <div class="text-xs text-error mb-1">Error:</div>
-            <pre class="text-xs bg-error/10 border border-error/30 rounded p-2 overflow-x-auto max-h-32 overflow-y-auto text-error">{@entry.error_message || "An error occurred"}</pre>
+            <pre class="text-xs bg-error/10 border border-error/30 rounded p-2 overflow-x-auto max-h-32 overflow-y-auto text-error">{@entry.error_message}</pre>
           </div>
         <% @result_json -> %>
           <div>
@@ -1395,6 +1396,10 @@ defmodule MsfailabWeb.WorkspaceComponents do
       <% :denied -> %>
         <span class="badge badge-error badge-sm gap-1">
           <.icon name="hero-x-circle" class="size-3" /> Denied
+        </span>
+      <% :cancelled -> %>
+        <span class="badge badge-error badge-sm gap-1">
+          <.icon name="hero-x-mark" class="size-3" /> Cancelled
         </span>
     <% end %>
     """
@@ -1663,6 +1668,9 @@ defmodule MsfailabWeb.WorkspaceComponents do
         _ -> false
       end
 
+    # Track is busy when either AI turn is active or console is executing
+    track_busy = ChatState.busy?(assigns.turn_status) or assigns.console_status == :busy
+
     # Group models by provider for the submenu, sorted by provider priority
     # Models within each group are already sorted descending from Registry.list_models/0
     models_by_provider =
@@ -1673,6 +1681,7 @@ defmodule MsfailabWeb.WorkspaceComponents do
     assigns =
       assigns
       |> assign(:send_disabled, send_disabled)
+      |> assign(:track_busy, track_busy)
       |> assign(:models_by_provider, models_by_provider)
 
     ~H"""
@@ -1797,14 +1806,28 @@ defmodule MsfailabWeb.WorkspaceComponents do
             >{@input_text}</textarea>
           </div>
           
+    <!-- Button group: Cancel and Send -->
+          <div class="flex gap-1">
+            <!-- Cancel button - shown when track is busy -->
+            <button
+              :if={@track_busy}
+              type="button"
+              phx-click="cancel_turn"
+              class="btn btn-square btn-error"
+              title="Cancel current operation"
+            >
+              <.icon name="hero-x-mark" class="size-5" />
+            </button>
+            
     <!-- Send button -->
-          <button
-            type="submit"
-            class={["btn btn-square", (@send_disabled && "btn-disabled") || "btn-primary"]}
-            disabled={@send_disabled}
-          >
-            <.icon name="hero-paper-airplane" class="size-5" />
-          </button>
+            <button
+              type="submit"
+              class={["btn btn-square", (@send_disabled && "btn-disabled") || "btn-primary"]}
+              disabled={@send_disabled}
+            >
+              <.icon name="hero-paper-airplane" class="size-5" />
+            </button>
+          </div>
         </form>
       </div>
     </div>
@@ -2176,8 +2199,8 @@ defmodule MsfailabWeb.WorkspaceComponents do
       timestamp={@entry.timestamp}
       status={terminal_status(@entry.tool_status)}
     >
-      <%= case @entry.tool_status do %>
-        <% :executing -> %>
+      <%= cond do %>
+        <% @entry.tool_status == :executing -> %>
           <div>
             {MsfailabWeb.Console.render_console_command(
               @entry.console_prompt || "msf6 > ",
@@ -2185,14 +2208,14 @@ defmodule MsfailabWeb.WorkspaceComponents do
             )}
           </div>
           <div class="mt-1"><span class="terminal-cursor"></span></div>
-        <% status when status in [:error, :timeout] -> %>
+        <% @entry.error_message -> %>
           {MsfailabWeb.Console.render_console_output(
             @entry.console_prompt || "msf6 > ",
             get_tool_command(@entry.tool_arguments),
-            Map.get(@entry, :error_message) || "Unknown error",
+            @entry.error_message,
             error: true
           )}
-        <% _ -> %>
+        <% true -> %>
           {MsfailabWeb.Console.render_console_output(
             @entry.console_prompt || "msf6 > ",
             get_tool_command(@entry.tool_arguments),
@@ -2253,19 +2276,19 @@ defmodule MsfailabWeb.WorkspaceComponents do
       timestamp={@entry.timestamp}
       status={terminal_status(@entry.tool_status)}
     >
-      <%= case @entry.tool_status do %>
-        <% :executing -> %>
+      <%= cond do %>
+        <% @entry.tool_status == :executing -> %>
           <div>
             {MsfailabWeb.Console.render_bash_command(get_tool_command(@entry.tool_arguments))}
           </div>
           <div class="mt-1"><span class="terminal-cursor"></span></div>
-        <% status when status in [:error, :timeout] -> %>
+        <% @entry.error_message -> %>
           {MsfailabWeb.Console.render_bash_output(
             get_tool_command(@entry.tool_arguments),
-            Map.get(@entry, :error_message) || "Unknown error",
+            @entry.error_message,
             error: true
           )}
-        <% _ -> %>
+        <% true -> %>
           {MsfailabWeb.Console.render_bash_output(
             get_tool_command(@entry.tool_arguments),
             @entry.result_content || ""
@@ -2286,7 +2309,8 @@ defmodule MsfailabWeb.WorkspaceComponents do
   defp status_border_class(:success), do: "border-base-300/30"
   defp status_border_class(:error), do: "border-error/50"
   defp status_border_class(:timeout), do: "border-error/50"
-  defp status_border_class(:declined), do: "border-base-300"
+  defp status_border_class(:cancelled), do: "border-error/50"
+  defp status_border_class(:denied), do: "border-base-300"
   defp status_border_class(_), do: "border-base-300/30"
 
   # Returns status to show in terminal box (nil for success since we don't want a badge)
@@ -2294,5 +2318,6 @@ defmodule MsfailabWeb.WorkspaceComponents do
   defp terminal_status(:executing), do: :executing
   defp terminal_status(:error), do: :error
   defp terminal_status(:timeout), do: :timeout
+  defp terminal_status(:cancelled), do: :cancelled
   defp terminal_status(_), do: nil
 end

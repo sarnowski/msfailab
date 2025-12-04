@@ -36,7 +36,8 @@ defmodule Msfailab.Tracks.TrackServer.Action do
   - `:broadcast_chat_state` - Broadcast ChatStateUpdated event
 
   ### External System Actions
-  - `{:start_llm, request}` - Start LLM streaming request
+  - `{:start_llm, params}` - Build ChatRequest from DB and start LLM streaming
+    (params: %{track_id, model, cache_context} - request built lazily after persist)
   - `{:send_command, command}` - Send command to Metasploit console
 
   ### Control Flow Actions
@@ -50,6 +51,8 @@ defmodule Msfailab.Tracks.TrackServer.Action do
   alias Msfailab.Events.ChatChanged
   alias Msfailab.Events.ConsoleChanged
   alias Msfailab.LLM
+  alias Msfailab.LLM.ChatRequest
+  alias Msfailab.Tools
   alias Msfailab.Tracks
   alias Msfailab.Tracks.ChatContext
   alias Msfailab.Tracks.ChatHistoryTurn
@@ -70,7 +73,9 @@ defmodule Msfailab.Tracks.TrackServer.Action do
   @type broadcast_chat_state :: :broadcast_chat_state
 
   # External system actions
-  @type start_llm :: {:start_llm, LLM.ChatRequest.t()}
+  # Lazy params map with track_id, model, and cache_context
+  @type llm_params :: %{track_id: integer(), model: String.t(), cache_context: term() | nil}
+  @type start_llm :: {:start_llm, llm_params()}
   @type send_command :: {:send_command, String.t()}
 
   # Control flow actions
@@ -187,7 +192,10 @@ defmodule Msfailab.Tracks.TrackServer.Action do
   end
 
   def execute({:update_turn_status, turn_id, status}, state) do
-    case ChatContext.update_turn_status(%ChatHistoryTurn{id: turn_id}, status) do
+    # Map in-memory :cancelled to DB's "interrupted" (semantically equivalent)
+    db_status = if status == "cancelled", do: "interrupted", else: status
+
+    case ChatContext.update_turn_status(%ChatHistoryTurn{id: turn_id}, db_status) do
       {:ok, _} ->
         state
 
@@ -233,8 +241,15 @@ defmodule Msfailab.Tracks.TrackServer.Action do
 
   # coveralls-ignore-start
   # Reason: External system integration requiring LLM mock infrastructure.
-  # Logic is straightforward case match on LLM.chat result.
-  def execute({:start_llm, request}, state) do
+  # The request building is now done here to ensure user messages are persisted first.
+  def execute(
+        {:start_llm, %{track_id: track_id, model: model, cache_context: cache_context}},
+        state
+      ) do
+    # Build the ChatRequest from DB - this runs AFTER persist_message has executed,
+    # so the first user prompt is now included in the entries.
+    request = build_llm_request(track_id, model, cache_context, state)
+
     case LLM.chat(request) do
       {:ok, ref} ->
         state
@@ -325,5 +340,40 @@ defmodule Msfailab.Tracks.TrackServer.Action do
         b
       end
     end)
+  end
+
+  # Builds a ChatRequest by loading entries from the database.
+  # This is called during action execution, AFTER persist_message has run,
+  # ensuring the first user prompt is included in the LLM context.
+  @spec build_llm_request(integer(), String.t(), map() | nil, State.t()) :: ChatRequest.t()
+  defp build_llm_request(track_id, model, cache_context, state) do
+    # Load entries from DB for accurate LLM context
+    entries = ChatContext.load_entries(track_id)
+    messages = ChatContext.entries_to_llm_messages(entries)
+
+    system_prompt =
+      case LLM.get_system_prompt() do
+        {:ok, prompt} ->
+          skills_list = Msfailab.Skills.generate_overview()
+
+          prompt
+          |> String.replace("{{SKILLS_LIBRARY}}", skills_list)
+          |> String.replace("{{WORKSPACE_NAME}}", state.workspace_slug)
+          |> String.replace("{{CONTAINER_NAME}}", state.container_slug)
+          |> String.replace("{{TRACK_NAME}}", state.track_slug)
+
+        {:error, _} ->
+          nil
+      end
+
+    tools = Tools.list_tools()
+
+    %ChatRequest{
+      model: model,
+      messages: messages,
+      system_prompt: system_prompt,
+      tools: tools,
+      cache_context: cache_context
+    }
   end
 end

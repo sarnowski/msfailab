@@ -98,6 +98,7 @@ defmodule Msfailab.Tracks.ChatState do
           | :executing_tools
           | :finished
           | :error
+          | :cancelled
 
   @type t :: %__MODULE__{
           entries: [ChatEntry.t()],
@@ -126,7 +127,8 @@ defmodule Msfailab.Tracks.ChatState do
                :pending_approval,
                :executing_tools,
                :finished,
-               :error
+               :error,
+               :cancelled
              ] do
     %__MODULE__{
       entries: entries,

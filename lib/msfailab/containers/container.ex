@@ -575,6 +575,26 @@ defmodule Msfailab.Containers.Container do
   end
 
   @doc """
+  Cancels a running Metasploit console command for a track.
+
+  Sends Ctrl+C to the console to interrupt the current command.
+  """
+  @spec cancel_console_command(integer(), integer()) :: :ok | {:error, atom()}
+  def cancel_console_command(container_record_id, track_id) do
+    GenServer.call(via_tuple(container_record_id), {:cancel_console_command, track_id})
+  end
+
+  @doc """
+  Cancels a running bash command by command_id.
+
+  Kills the Task process executing the command.
+  """
+  @spec cancel_bash_command(integer(), String.t()) :: :ok | {:error, :not_found}
+  def cancel_bash_command(container_record_id, command_id) do
+    GenServer.call(via_tuple(container_record_id), {:cancel_bash_command, command_id})
+  end
+
+  @doc """
   Gets the RPC endpoint for the container.
   """
   @spec get_rpc_endpoint(integer()) :: {:ok, map()} | {:error, term()}
@@ -797,6 +817,39 @@ defmodule Msfailab.Containers.Container do
       end)
 
     {:reply, commands, state}
+  end
+
+  def handle_call({:cancel_console_command, track_id}, _from, state) do
+    case Map.get(state.consoles, track_id) do
+      nil ->
+        {:reply, {:error, :console_not_found}, state}
+
+      %{pid: nil} ->
+        {:reply, {:error, :console_not_running}, state}
+
+      %{pid: pid} ->
+        result = Console.cancel_command(pid)
+        {:reply, result, state}
+    end
+  end
+
+  def handle_call({:cancel_bash_command, command_id}, _from, state) do
+    case Map.pop(state.running_bash_commands, command_id) do
+      {nil, _} ->
+        {:reply, {:error, :not_found}, state}
+
+      {%{pid: pid, ref: ref, track_id: track_id, command: cmd}, new_bash_commands} ->
+        # Demonitor to avoid DOWN message handling
+        Process.demonitor(ref, [:flush])
+        # Kill the task
+        Process.exit(pid, :kill)
+
+        # Broadcast cancelled result
+        cancelled_cmd = Command.cancel(cmd)
+        broadcast_command_result(state, track_id, cancelled_cmd)
+
+        {:reply, :ok, %{state | running_bash_commands: new_bash_commands}}
+    end
   end
 
   def handle_call(:get_rpc_endpoint, _from, state) do

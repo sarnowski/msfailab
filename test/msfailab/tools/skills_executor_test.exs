@@ -15,8 +15,10 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 defmodule Msfailab.Tools.SkillsExecutorTest do
-  use ExUnit.Case, async: true
+  # async: false because we need to stop/restart the global Skills.Registry
+  use ExUnit.Case, async: false
 
+  alias Msfailab.Skills
   alias Msfailab.Skills.Skill
   alias Msfailab.Tools.SkillsExecutor
 
@@ -34,6 +36,12 @@ defmodule Msfailab.Tools.SkillsExecutorTest do
 
   describe "execute/3" do
     setup do
+      # Stop the global registry if it's running
+      case GenServer.whereis(Skills.Registry) do
+        nil -> :ok
+        pid -> GenServer.stop(pid, :normal)
+      end
+
       skill = %Skill{
         name: "test_skill",
         description: "A test skill for testing",
@@ -41,7 +49,17 @@ defmodule Msfailab.Tools.SkillsExecutorTest do
         body: "# Test Skill\n\nThis is the skill body content."
       }
 
-      start_supervised!({Msfailab.Skills.Registry, skills: [skill]})
+      # Start our test registry
+      start_supervised!({Skills.Registry, skills: [skill]})
+
+      on_exit(fn ->
+        # Restart the global registry for other tests if not running
+        case GenServer.whereis(Skills.Registry) do
+          nil -> Skills.Registry.start_link([])
+          _pid -> :ok
+        end
+      end)
+
       :ok
     end
 

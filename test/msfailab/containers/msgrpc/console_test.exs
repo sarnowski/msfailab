@@ -479,4 +479,109 @@ defmodule Msfailab.Containers.Msgrpc.ConsoleTest do
       assert_receive {:EXIT, ^pid, {:console_write_failed, _}}, 100
     end
   end
+
+  describe "cancel_command/1" do
+    test "returns {:error, :not_busy} when console is :ready" do
+      expect(MsgrpcClientMock, :console_create, fn _, _ ->
+        {:ok, %{"id" => @console_id}}
+      end)
+
+      expect(MsgrpcClientMock, :console_read, fn _, _, _ ->
+        {:ok, %{"data" => "", "busy" => false, "prompt" => "msf6 > "}}
+      end)
+
+      {:ok, pid} = Console.start_link(default_opts())
+      Process.sleep(20)
+
+      assert {:error, :not_busy} = Console.cancel_command(pid)
+    end
+
+    test "returns {:error, :not_busy} when console is :starting" do
+      expect(MsgrpcClientMock, :console_create, fn _, _ ->
+        {:ok, %{"id" => @console_id}}
+      end)
+
+      # Keep console busy in starting state
+      expect(MsgrpcClientMock, :console_read, fn _, _, _ ->
+        {:ok, %{"data" => "Loading...", "busy" => true, "prompt" => ""}}
+      end)
+
+      {:ok, pid} = Console.start_link(default_opts())
+      Process.sleep(10)
+
+      assert {:error, :not_busy} = Console.cancel_command(pid)
+    end
+
+    test "sends Ctrl+C when console is :busy and returns :ok" do
+      expect(MsgrpcClientMock, :console_create, fn _, _ ->
+        {:ok, %{"id" => @console_id}}
+      end)
+
+      expect(MsgrpcClientMock, :console_read, fn _, _, _ ->
+        {:ok, %{"data" => "", "busy" => false, "prompt" => "msf6 > "}}
+      end)
+
+      {:ok, pid} = Console.start_link(default_opts())
+      Process.sleep(20)
+
+      # Start a command
+      expect(MsgrpcClientMock, :console_write, fn _, _, _, _ -> {:ok, 5} end)
+
+      # Keep the console busy (simulating long-running command) - multiple polls
+      stub(MsgrpcClientMock, :console_read, fn _, _, _ ->
+        {:ok, %{"data" => "Running...", "busy" => true, "prompt" => ""}}
+      end)
+
+      {:ok, _cmd_id} = Console.send_command(pid, "long_running_scan")
+      Process.sleep(15)
+
+      # Now cancel - should send Ctrl+C (0x03)
+      expect(MsgrpcClientMock, :console_write, fn _endpoint, _token, _console_id, data ->
+        assert data == <<3>>
+        {:ok, 1}
+      end)
+
+      assert :ok = Console.cancel_command(pid)
+
+      # After cancel, console will return to ready on next poll
+      stub(MsgrpcClientMock, :console_read, fn _, _, _ ->
+        {:ok, %{"data" => "^C\nAborted\n", "busy" => false, "prompt" => "msf6 > "}}
+      end)
+
+      # Wait for console to return to ready
+      Process.sleep(20)
+      assert Console.get_status(pid) == :ready
+    end
+
+    test "returns {:error, :write_failed} when Ctrl+C write fails" do
+      expect(MsgrpcClientMock, :console_create, fn _, _ ->
+        {:ok, %{"id" => @console_id}}
+      end)
+
+      expect(MsgrpcClientMock, :console_read, fn _, _, _ ->
+        {:ok, %{"data" => "", "busy" => false, "prompt" => "msf6 > "}}
+      end)
+
+      {:ok, pid} = Console.start_link(default_opts())
+      Process.sleep(20)
+
+      # Start a command
+      expect(MsgrpcClientMock, :console_write, fn _, _, _, _ -> {:ok, 5} end)
+
+      # Keep the console busy - multiple polls possible
+      stub(MsgrpcClientMock, :console_read, fn _, _, _ ->
+        {:ok, %{"data" => "Running...", "busy" => true, "prompt" => ""}}
+      end)
+
+      {:ok, _cmd_id} = Console.send_command(pid, "scan")
+      Process.sleep(15)
+
+      # Cancel write fails
+      expect(MsgrpcClientMock, :console_write, fn _, _, _, _ ->
+        {:error, {:console_write_failed, "Token expired"}}
+      end)
+
+      assert {:error, :write_failed} = Console.cancel_command(pid)
+    end
+  end
 end

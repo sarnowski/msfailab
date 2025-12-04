@@ -34,7 +34,7 @@ defmodule Msfailab.Containers.Command do
   """
 
   @type command_type :: :metasploit | :bash
-  @type status :: :running | :finished | :error
+  @type status :: :running | :finished | :error | :cancelled
 
   @type t :: %__MODULE__{
           id: String.t(),
@@ -156,6 +156,22 @@ defmodule Msfailab.Containers.Command do
   @spec running?(t()) :: boolean()
   def running?(%__MODULE__{status: :running}), do: true
   def running?(%__MODULE__{}), do: false
+
+  @doc """
+  Marks the command as cancelled.
+
+  Used when a command is interrupted by user action.
+
+  ## Examples
+
+      iex> cmd = Command.new(:bash, "long_scan") |> Command.cancel()
+      iex> cmd.status
+      :cancelled
+  """
+  @spec cancel(t()) :: t()
+  def cancel(%__MODULE__{} = cmd) do
+    %{cmd | status: :cancelled}
+  end
 
   # Private functions
 

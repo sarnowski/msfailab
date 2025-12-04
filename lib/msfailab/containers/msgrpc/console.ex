@@ -467,6 +467,17 @@ defmodule Msfailab.Containers.Msgrpc.Console do
     GenServer.cast(pid, :go_offline)
   end
 
+  @doc """
+  Cancels the current command by sending Ctrl+C.
+
+  Returns :ok if cancellation was sent, {:error, :not_busy} if no command running,
+  or {:error, :write_failed} if the Ctrl+C write failed.
+  """
+  @spec cancel_command(pid()) :: :ok | {:error, :not_busy | :write_failed}
+  def cancel_command(pid) do
+    GenServer.call(pid, :cancel_command)
+  end
+
   # ===========================================================================
   # GenServer Callbacks
   # ===========================================================================
@@ -560,6 +571,26 @@ defmodule Msfailab.Containers.Msgrpc.Console do
 
   def handle_call(:get_prompt, _from, state) do
     {:reply, state.current_prompt, state}
+  end
+
+  def handle_call(:cancel_command, _from, %{status: :busy} = state) do
+    # Send Ctrl+C (ASCII 3) to interrupt the current command
+    case msgrpc_client().console_write(
+           state.endpoint,
+           state.token,
+           state.console_id,
+           <<3>>
+         ) do
+      {:ok, _wrote} ->
+        {:reply, :ok, state}
+
+      {:error, _reason} ->
+        {:reply, {:error, :write_failed}, state}
+    end
+  end
+
+  def handle_call(:cancel_command, _from, state) do
+    {:reply, {:error, :not_busy}, state}
   end
 
   @impl true

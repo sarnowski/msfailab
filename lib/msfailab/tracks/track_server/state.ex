@@ -160,12 +160,21 @@ defmodule Msfailab.Tracks.TrackServer.State do
             | :executing_tools
             | :finished
             | :error
+            | :cancelled
 
     @type tool_state :: %{
             tool_call_id: String.t(),
             tool_name: String.t(),
             arguments: map(),
-            status: :pending | :approved | :denied | :executing | :success | :error | :timeout,
+            status:
+              :pending
+              | :approved
+              | :denied
+              | :executing
+              | :success
+              | :error
+              | :timeout
+              | :cancelled,
             command_id: String.t() | nil,
             started_at: DateTime.t() | nil
           }
@@ -235,9 +244,11 @@ defmodule Msfailab.Tracks.TrackServer.State do
 
   @type t :: %__MODULE__{
           track_id: integer(),
+          track_slug: String.t(),
           workspace_id: integer(),
           workspace_slug: String.t(),
           container_id: integer(),
+          container_slug: String.t(),
           autonomous: boolean(),
           console: Console.t(),
           stream: Stream.t(),
@@ -245,12 +256,21 @@ defmodule Msfailab.Tracks.TrackServer.State do
           chat_entries: [ChatEntry.t()]
         }
 
-  @enforce_keys [:track_id, :workspace_id, :workspace_slug, :container_id]
-  defstruct [
+  @enforce_keys [
     :track_id,
+    :track_slug,
     :workspace_id,
     :workspace_slug,
     :container_id,
+    :container_slug
+  ]
+  defstruct [
+    :track_id,
+    :track_slug,
+    :workspace_id,
+    :workspace_slug,
+    :container_id,
+    :container_slug,
     autonomous: false,
     console: nil,
     stream: nil,
@@ -261,13 +281,15 @@ defmodule Msfailab.Tracks.TrackServer.State do
   @doc """
   Creates a new state with the given IDs and defaults.
   """
-  @spec new(integer(), integer(), String.t(), integer(), keyword()) :: t()
-  def new(track_id, workspace_id, workspace_slug, container_id, opts \\ []) do
+  @spec new(map(), keyword()) :: t()
+  def new(ids, opts \\ []) do
     %__MODULE__{
-      track_id: track_id,
-      workspace_id: workspace_id,
-      workspace_slug: workspace_slug,
-      container_id: container_id,
+      track_id: Map.fetch!(ids, :track_id),
+      track_slug: Map.fetch!(ids, :track_slug),
+      workspace_id: Map.fetch!(ids, :workspace_id),
+      workspace_slug: Map.fetch!(ids, :workspace_slug),
+      container_id: Map.fetch!(ids, :container_id),
+      container_slug: Map.fetch!(ids, :container_slug),
       autonomous: Keyword.get(opts, :autonomous, false),
       console: Console.new(),
       stream: Stream.new(1),
@@ -281,7 +303,8 @@ defmodule Msfailab.Tracks.TrackServer.State do
 
   ## Parameters
 
-  - `ids` - Map with `:track_id`, `:workspace_id`, `:workspace_slug`, `:container_id`
+  - `ids` - Map with `:track_id`, `:track_slug`, `:workspace_id`, `:workspace_slug`,
+    `:container_id`, `:container_slug`
   - `opts` - Keyword list with:
     - `:autonomous` - Whether autonomous mode is enabled
     - `:console_history` - Persisted console history blocks
@@ -293,9 +316,11 @@ defmodule Msfailab.Tracks.TrackServer.State do
   @spec from_persisted(map(), keyword()) :: t()
   def from_persisted(ids, opts) do
     track_id = Map.fetch!(ids, :track_id)
+    track_slug = Map.fetch!(ids, :track_slug)
     workspace_id = Map.fetch!(ids, :workspace_id)
     workspace_slug = Map.fetch!(ids, :workspace_slug)
     container_id = Map.fetch!(ids, :container_id)
+    container_slug = Map.fetch!(ids, :container_slug)
 
     autonomous = Keyword.get(opts, :autonomous, false)
     console_history = Keyword.get(opts, :console_history, [])
@@ -306,9 +331,11 @@ defmodule Msfailab.Tracks.TrackServer.State do
 
     %__MODULE__{
       track_id: track_id,
+      track_slug: track_slug,
       workspace_id: workspace_id,
       workspace_slug: workspace_slug,
       container_id: container_id,
+      container_slug: container_slug,
       autonomous: autonomous,
       console: Console.from_history(console_history),
       stream: Stream.new(next_position),

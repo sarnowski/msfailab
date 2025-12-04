@@ -138,7 +138,8 @@ defmodule Msfailab.Tracks.ChatEntry do
   @type entry_type :: :message | :tool_invocation | :memory
   @type role :: :user | :assistant
   @type message_type :: :prompt | :thinking | :response
-  @type tool_status :: :pending | :approved | :denied | :executing | :success | :error | :timeout
+  @type tool_status ::
+          :pending | :approved | :denied | :executing | :success | :error | :timeout | :cancelled
 
   @typedoc """
   A chat entry representing either a message or a tool invocation.
@@ -281,6 +282,7 @@ defmodule Msfailab.Tracks.ChatEntry do
   def tool_status_to_atom("success"), do: :success
   def tool_status_to_atom("error"), do: :error
   def tool_status_to_atom("timeout"), do: :timeout
+  def tool_status_to_atom("cancelled"), do: :cancelled
 
   # ===========================================================================
   # Message Entry Factory Functions

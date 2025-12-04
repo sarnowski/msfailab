@@ -186,7 +186,7 @@ defmodule Msfailab.SkillsTest do
   end
 
   describe "generate_overview/0" do
-    test "returns markdown overview with skill table" do
+    test "returns markdown list of skills" do
       skills = [
         %Skill{name: "skill1", description: "First skill", filename: "skill1.md", body: "Body 1"},
         %Skill{name: "skill2", description: "Second skill", filename: "skill2.md", body: "Body 2"}
@@ -196,26 +196,17 @@ defmodule Msfailab.SkillsTest do
 
       overview = Skills.generate_overview()
 
-      # Should contain header
-      assert overview =~ "## Skill Library"
-      # Should contain table
-      assert overview =~ "| Skill name | Description |"
-      # Should contain skill entries
-      assert overview =~ "skill1"
-      assert overview =~ "First skill"
-      assert overview =~ "skill2"
-      assert overview =~ "Second skill"
-      # Should contain instructions
-      assert overview =~ "learn_skill"
+      # Should contain skill entries in list format
+      assert overview =~ "- **skill1** — First skill"
+      assert overview =~ "- **skill2** — Second skill"
     end
 
-    test "returns empty overview when no skills" do
+    test "returns empty message when no skills" do
       start_supervised!({Msfailab.Skills.Registry, skills: []})
 
       overview = Skills.generate_overview()
 
-      assert overview =~ "Skill Library"
-      assert overview =~ "No skills available"
+      assert overview == "*No skills available*"
     end
   end
 end

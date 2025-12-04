@@ -717,6 +717,43 @@ defmodule Msfailab.Tracks do
     end
   end
 
+  @doc """
+  Cancels the current turn and all in-progress operations for a track.
+
+  Cancels:
+  - Active LLM streaming (ignores subsequent events)
+  - Executing tool invocations (marked as cancelled)
+  - Running console commands (sends Ctrl+C)
+  - Running bash commands (kills Tasks)
+
+  ## Returns
+
+  - `:ok` - Turn was cancelled successfully
+  - `{:error, :no_active_turn}` - No turn is currently active
+  - `{:error, :not_found}` - No TrackServer exists for the track
+  """
+  @spec cancel_turn(integer()) :: :ok | {:error, :no_active_turn | :not_found}
+  def cancel_turn(track_id) do
+    case Process.whereis(Msfailab.Tracks.Registry) do
+      nil ->
+        {:error, :not_found}
+
+      _registry_pid ->
+        case TrackServer.whereis(track_id) do
+          nil ->
+            {:error, :not_found}
+
+          _pid ->
+            try do
+              TrackServer.cancel_turn(track_id)
+            catch
+              :exit, _ ->
+                {:error, :not_found}
+            end
+        end
+    end
+  end
+
   # coveralls-ignore-stop
 
   # ============================================================================

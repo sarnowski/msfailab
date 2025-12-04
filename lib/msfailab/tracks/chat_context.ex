@@ -590,7 +590,7 @@ defmodule Msfailab.Tracks.ChatContext do
 
   # Filter: Include tool invocations with terminal status
   defp include_in_llm_context?(%{entry_type: "tool_invocation", tool_invocation: ti}) do
-    ti.status in ["success", "error", "timeout", "denied"]
+    ti.status in ["success", "error", "timeout", "denied", "cancelled"]
   end
 
   defp include_in_llm_context?(_), do: false
@@ -618,20 +618,18 @@ defmodule Msfailab.Tracks.ChatContext do
     [call_msg, result_msg]
   end
 
-  defp tool_result_content(ti) do
-    case ti.status do
-      "success" ->
-        {ti.result_content || "", false}
+  defp tool_result_content(%{status: "success"} = ti),
+    do: {ti.result_content || "", false}
 
-      "error" ->
-        {"Error: #{ti.error_message || "Unknown error"}", true}
+  defp tool_result_content(%{status: "error"} = ti),
+    do: {"Error: #{ti.error_message || "Unknown error"}", true}
 
-      "timeout" ->
-        {"Error: Tool execution timed out", true}
+  defp tool_result_content(%{status: "timeout"}),
+    do: {"Error: Tool execution timed out", true}
 
-      "denied" ->
-        reason = ti.denied_reason || "No reason given"
-        {"Tool call denied by user: #{reason}", true}
-    end
-  end
+  defp tool_result_content(%{status: "denied"} = ti),
+    do: {"Tool call denied by user: #{ti.denied_reason || "No reason given"}", true}
+
+  defp tool_result_content(%{status: "cancelled"} = ti),
+    do: {"Error: #{ti.error_message || "User cancelled the execution"}", true}
 end

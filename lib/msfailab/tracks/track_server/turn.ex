@@ -67,18 +67,18 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
 
   require Logger
 
-  alias Msfailab.LLM
-  alias Msfailab.LLM.ChatRequest
   alias Msfailab.LLM.Events, as: LLMEvents
   alias Msfailab.Tools
   alias Msfailab.Tools.MemoryExecutor
   alias Msfailab.Tools.MsfDataExecutor
-  alias Msfailab.Tracks.ChatContext
   alias Msfailab.Tracks.ChatEntry
   alias Msfailab.Tracks.TrackServer.State.Console, as: ConsoleState
   alias Msfailab.Tracks.TrackServer.State.Stream, as: StreamState
   alias Msfailab.Tracks.TrackServer.State.Turn, as: TurnState
   alias Msfailab.Tracks.TrackServer.Turn.ErrorFormatter
+
+  # Lazy params for start_llm action - request is built in Action.execute
+  @type llm_params :: %{track_id: pos_integer(), model: String.t(), cache_context: term() | nil}
 
   @type action ::
           {:create_turn, pos_integer(), String.t()}
@@ -86,7 +86,7 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
           | {:persist_tool_invocation, pos_integer(), String.t(), pos_integer(), map()}
           | {:update_tool_status, integer(), String.t(), keyword()}
           | {:update_turn_status, String.t(), String.t()}
-          | {:start_llm, ChatRequest.t()}
+          | {:start_llm, llm_params()}
           | {:send_msf_command, String.t()}
           | {:send_bash_command, integer(), String.t()}
           | :broadcast_chat_state
@@ -163,7 +163,7 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
   # Predicates
   # ---------------------------------------------------------------------------
 
-  defp turn_inactive?(turn), do: turn.status in [:idle, :finished, :error]
+  defp turn_inactive?(turn), do: turn.status in [:idle, :finished, :error, :cancelled]
 
   defp should_transition_to_executing?(turn) do
     turn.status == :streaming and has_approved_tools?(turn)
@@ -194,7 +194,7 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
   defp all_tools_terminal?(turn) do
     map_size(turn.tool_invocations) > 0 and
       Enum.all?(turn.tool_invocations, fn {_id, ts} ->
-        ts.status in [:success, :error, :timeout, :denied]
+        ts.status in [:success, :error, :timeout, :denied, :cancelled]
       end)
   end
 
@@ -230,15 +230,17 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
     user_entry = ChatEntry.user_prompt(Ecto.UUID.generate(), position, user_prompt)
     new_entries = entries ++ [user_entry]
 
-    # Build LLM request
-    request = build_llm_request(track_id, model, nil)
+    # Build actions with lazy LLM params
+    # NOTE: We pass lazy params instead of a pre-built ChatRequest so that
+    # Action.execute can build the request AFTER the user message is persisted.
+    # This fixes the bug where the first user prompt was missing from the LLM request.
+    llm_params = %{track_id: track_id, model: model, cache_context: nil}
 
-    # Build actions
     actions = [
       {:create_turn, track_id, model},
       {:persist_message, track_id, nil, position,
        %{role: "user", message_type: "prompt", content: user_prompt}},
-      {:start_llm, request},
+      {:start_llm, llm_params},
       :broadcast_chat_state
     ]
 
@@ -1085,7 +1087,8 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
     # coveralls-ignore-next-line
     Logger.debug("Starting next LLM request")
 
-    request = build_llm_request(track_id, model, turn.last_cache_context)
+    # Use lazy params so Action.execute builds the request from fresh DB data
+    llm_params = %{track_id: track_id, model: model, cache_context: turn.last_cache_context}
 
     new_turn = %TurnState{
       turn
@@ -1093,7 +1096,7 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
         tool_invocations: %{}
     }
 
-    {new_turn, entries, [{:start_llm, request}, :broadcast_chat_state]}
+    {new_turn, entries, [{:start_llm, llm_params}, :broadcast_chat_state]}
   end
 
   @spec complete_turn(TurnState.t(), [ChatEntry.t()]) ::
@@ -1119,29 +1122,6 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
     }
 
     {new_turn, entries, actions}
-  end
-
-  @spec build_llm_request(integer(), String.t(), map() | nil) :: ChatRequest.t()
-  defp build_llm_request(track_id, model, cache_context) do
-    # Load entries from DB for accurate LLM context
-    entries = ChatContext.load_entries(track_id)
-    messages = ChatContext.entries_to_llm_messages(entries)
-
-    system_prompt =
-      case LLM.get_system_prompt() do
-        {:ok, prompt} -> prompt
-        {:error, _} -> nil
-      end
-
-    tools = Tools.list_tools()
-
-    %ChatRequest{
-      model: model,
-      messages: messages,
-      system_prompt: system_prompt,
-      tools: tools,
-      cache_context: cache_context
-    }
   end
 
   @spec update_chat_entry_status([ChatEntry.t()], integer(), ChatEntry.tool_status(), keyword()) ::
@@ -1199,5 +1179,86 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
           {:pending, "pending"}
         end
     end
+  end
+
+  # ============================================================================
+  # Turn Cancellation
+  # ============================================================================
+
+  @doc """
+  Cancels an active turn and all its in-progress operations.
+
+  Returns updated state and actions to:
+  1. Mark all executing tools as :cancelled
+  2. Clear LLM reference (ignores subsequent events)
+  3. Update turn status to :cancelled
+  4. Persist status changes to database
+
+  ## Parameters
+
+  - `turn` - Current turn state
+  - `entries` - Current chat entries
+
+  ## Returns
+
+  `{new_turn, new_entries, actions}` or `:no_active_turn` if nothing to cancel.
+  """
+  @spec cancel_turn(TurnState.t(), [ChatEntry.t()]) ::
+          {TurnState.t(), [ChatEntry.t()], [action()]} | :no_active_turn
+  def cancel_turn(%TurnState{status: status}, _entries)
+      when status in [:idle, :finished, :error, :cancelled] do
+    :no_active_turn
+  end
+
+  def cancel_turn(%TurnState{} = turn, entries) do
+    # Mark non-terminal tools as :cancelled
+    {cancelled_tools, tool_actions} =
+      Enum.reduce(turn.tool_invocations, {%{}, []}, fn {entry_id, tool_state},
+                                                       {tools_acc, actions_acc} ->
+        if tool_state.status in [:pending, :approved, :executing] do
+          new_tool = %{tool_state | status: :cancelled}
+
+          action =
+            {:update_tool_status, entry_id, "cancelled",
+             [error_message: "User cancelled the execution"]}
+
+          {Map.put(tools_acc, entry_id, new_tool), [action | actions_acc]}
+        else
+          {Map.put(tools_acc, entry_id, tool_state), actions_acc}
+        end
+      end)
+
+    # Update entries to reflect cancellation
+    cancelled_entry_ids =
+      MapSet.new(
+        cancelled_tools
+        |> Enum.filter(fn {_id, ts} -> ts.status == :cancelled end)
+        |> Enum.map(fn {id, _ts} -> id end)
+      )
+
+    new_entries =
+      Enum.map(entries, fn entry ->
+        if MapSet.member?(cancelled_entry_ids, entry.position) and
+             ChatEntry.tool_invocation?(entry) do
+          %{entry | tool_status: :cancelled}
+        else
+          entry
+        end
+      end)
+
+    new_turn = %TurnState{
+      turn
+      | status: :cancelled,
+        llm_ref: nil,
+        tool_invocations: cancelled_tools,
+        command_to_tool: %{}
+    }
+
+    turn_action =
+      if turn.turn_id, do: [{:update_turn_status, turn.turn_id, "cancelled"}], else: []
+
+    actions = tool_actions ++ turn_action ++ [:broadcast_chat_state]
+
+    {new_turn, new_entries, actions}
   end
 end
