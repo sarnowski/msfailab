@@ -195,7 +195,8 @@ defmodule Msfailab.Tracks.ChatEntry do
           tool_arguments: map() | nil,
           tool_status: tool_status() | nil,
           console_prompt: String.t() | nil,
-          result_content: String.t() | nil
+          result_content: String.t() | nil,
+          error_message: String.t() | nil
         }
 
   @enforce_keys [:id, :position, :entry_type, :streaming, :timestamp]
@@ -219,7 +220,8 @@ defmodule Msfailab.Tracks.ChatEntry do
     :tool_arguments,
     :tool_status,
     :console_prompt,
-    :result_content
+    :result_content,
+    :error_message
   ]
 
   # ===========================================================================
@@ -587,6 +589,7 @@ defmodule Msfailab.Tracks.ChatEntry do
       tool_status: tool_status_to_atom(ti.status),
       console_prompt: ti.console_prompt || "",
       result_content: ti.result_content,
+      error_message: ti.error_message,
       streaming: false,
       timestamp: entry.inserted_at
     }

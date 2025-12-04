@@ -330,6 +330,7 @@ defmodule Msfailab.LLM.Providers.Ollama.CoreTest do
         tools: [
           %Tool{
             name: "search",
+            short_title: "Searching",
             description: "Search for exploits",
             parameters: %{"type" => "object"}
           }
@@ -412,6 +413,7 @@ defmodule Msfailab.LLM.Providers.Ollama.CoreTest do
       tools = [
         %Tool{
           name: "msf_command",
+          short_title: "Running MSF command",
           description: "Execute MSF command",
           parameters: %{"type" => "object", "properties" => %{}}
         }

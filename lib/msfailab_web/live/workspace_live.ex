@@ -29,8 +29,10 @@ defmodule MsfailabWeb.WorkspaceLive do
   alias Msfailab.Events
   alias Msfailab.Events.ChatChanged
   alias Msfailab.Events.ConsoleChanged
+  alias Msfailab.Events.DatabaseUpdated
   alias Msfailab.Events.WorkspaceChanged
   alias Msfailab.LLM
+  alias Msfailab.MsfData
   alias Msfailab.Slug
   alias Msfailab.Tracks
   alias Msfailab.Tracks.ChatState
@@ -70,6 +72,20 @@ defmodule MsfailabWeb.WorkspaceLive do
       |> assign(:memory, Memory.new())
       # Event subscription tracking
       |> assign(:subscribed_workspace_id, nil)
+      # Database browser state
+      |> assign(:show_database_modal, false)
+      |> assign(:asset_counts, empty_asset_counts())
+      |> assign(:database_active_tab, :hosts)
+      |> assign(:database_search_term, "")
+      |> assign(:database_assets, [])
+      |> assign(:database_sort_field, :address)
+      |> assign(:database_sort_dir, :asc)
+      |> assign(:database_page, 1)
+      |> assign(:database_page_size, 25)
+      |> assign(:database_total_count, 0)
+      # Detail view state
+      |> assign(:database_detail_asset, nil)
+      |> assign(:database_detail_type, nil)
 
     {:ok, socket}
   end
@@ -94,6 +110,9 @@ defmodule MsfailabWeb.WorkspaceLive do
 
         # Load containers with their tracks preloaded for the header
         containers = Containers.list_containers_with_tracks(workspace)
+
+        # Load asset counts for the database button badge
+        asset_counts = load_asset_counts(workspace)
 
         current_track =
           if track_slug do
@@ -125,6 +144,7 @@ defmodule MsfailabWeb.WorkspaceLive do
             |> assign(:current_prompt, current_prompt)
             |> assign(:chat_state, chat_state)
             |> assign(:memory, memory)
+            |> assign(:asset_counts, asset_counts)
             |> assign(:page_title, Helpers.page_title(workspace, current_track))
             |> maybe_assign_selected_model(current_track)
             |> maybe_assign_autonomous_mode(current_track)
@@ -175,6 +195,8 @@ defmodule MsfailabWeb.WorkspaceLive do
             autonomous_mode={@autonomous_mode}
             show_input_menu={@show_input_menu}
             available_models={@available_models}
+            asset_counts={@asset_counts}
+            on_open_database={JS.push("open_database_modal")}
           />
         <% else %>
           <.asset_library />
@@ -283,6 +305,80 @@ defmodule MsfailabWeb.WorkspaceLive do
           </div>
         </.form>
       </.modal>
+      
+    <!-- Database browser modal -->
+      <.database_browser
+        show={@show_database_modal}
+        on_close={JS.push("close_database_modal")}
+        asset_counts={@asset_counts}
+        active_tab={@database_active_tab}
+        search_term={@database_search_term}
+        detail_asset={@database_detail_asset}
+        detail_type={@database_detail_type}
+      >
+        <:table_content>
+          <%= if @database_assets != [] do %>
+            <%= case @database_active_tab do %>
+              <% :hosts -> %>
+                <.hosts_table
+                  hosts={@database_assets}
+                  sort_field={@database_sort_field}
+                  sort_dir={@database_sort_dir}
+                  search_term={@database_search_term}
+                />
+              <% :services -> %>
+                <.services_table
+                  services={@database_assets}
+                  sort_field={@database_sort_field}
+                  sort_dir={@database_sort_dir}
+                  search_term={@database_search_term}
+                />
+              <% :vulns -> %>
+                <.vulns_table
+                  vulns={@database_assets}
+                  sort_field={@database_sort_field}
+                  sort_dir={@database_sort_dir}
+                  search_term={@database_search_term}
+                />
+              <% :notes -> %>
+                <.notes_table
+                  notes={@database_assets}
+                  sort_field={@database_sort_field}
+                  sort_dir={@database_sort_dir}
+                  search_term={@database_search_term}
+                />
+              <% :creds -> %>
+                <.creds_table
+                  creds={@database_assets}
+                  sort_field={@database_sort_field}
+                  sort_dir={@database_sort_dir}
+                  search_term={@database_search_term}
+                />
+              <% :loots -> %>
+                <.loots_table
+                  loots={@database_assets}
+                  sort_field={@database_sort_field}
+                  sort_dir={@database_sort_dir}
+                  search_term={@database_search_term}
+                />
+              <% :sessions -> %>
+                <.sessions_table
+                  sessions={@database_assets}
+                  sort_field={@database_sort_field}
+                  sort_dir={@database_sort_dir}
+                  search_term={@database_search_term}
+                />
+              <% _ -> %>
+            <% end %>
+            <.pagination
+              page={@database_page}
+              total_pages={ceil(@database_total_count / @database_page_size)}
+              total_count={@database_total_count}
+              page_size={@database_page_size}
+            />
+          <% end %>
+        </:table_content>
+      </.database_browser>
     </Layouts.app>
     """
   end
@@ -458,6 +554,148 @@ defmodule MsfailabWeb.WorkspaceLive do
 
       {:error, changeset} ->
         {:noreply, assign_container_form(socket, changeset)}
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Database Browser Modal Event Handlers
+  # ---------------------------------------------------------------------------
+
+  @impl true
+  def handle_event("open_database_modal", _params, socket) do
+    # Load data for the initial tab when opening modal
+    socket =
+      socket
+      |> assign(:show_database_modal, true)
+      |> assign(:database_page, 1)
+      |> load_database_assets()
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("close_database_modal", _params, socket) do
+    {:noreply, assign(socket, :show_database_modal, false)}
+  end
+
+  @impl true
+  def handle_event("database_tab_change", %{"tab" => tab}, socket) do
+    tab_atom = String.to_existing_atom(tab)
+    default_sort = default_sort_for_tab(tab_atom)
+
+    socket =
+      socket
+      |> assign(:database_active_tab, tab_atom)
+      |> assign(:database_sort_field, default_sort.field)
+      |> assign(:database_sort_dir, default_sort.dir)
+      |> assign(:database_page, 1)
+      |> load_database_assets()
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("database_search", %{"value" => search_term}, socket) do
+    socket =
+      socket
+      |> assign(:database_search_term, search_term)
+      |> assign(:database_page, 1)
+      |> load_database_assets()
+
+    {:noreply, socket}
+  end
+
+  def handle_event("database_search", %{"search" => search_term}, socket) do
+    socket =
+      socket
+      |> assign(:database_search_term, search_term)
+      |> assign(:database_page, 1)
+      |> load_database_assets()
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("database_sort", %{"field" => field}, socket) do
+    field_atom = String.to_existing_atom(field)
+    current_field = socket.assigns.database_sort_field
+    current_dir = socket.assigns.database_sort_dir
+
+    # Toggle direction if same field, otherwise default to :asc
+    new_dir =
+      if field_atom == current_field do
+        if current_dir == :asc, do: :desc, else: :asc
+      else
+        :asc
+      end
+
+    socket =
+      socket
+      |> assign(:database_sort_field, field_atom)
+      |> assign(:database_sort_dir, new_dir)
+      |> load_database_assets()
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("database_page", %{"page" => page}, socket) do
+    page_num = String.to_integer(page)
+
+    socket =
+      socket
+      |> assign(:database_page, page_num)
+      |> load_database_assets()
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("database_select", %{"type" => type, "id" => id}, socket) do
+    asset_id = String.to_integer(id)
+    workspace = socket.assigns.workspace
+
+    case fetch_asset_detail(workspace.slug, type, asset_id) do
+      {:ok, asset} ->
+        socket =
+          socket
+          |> assign(:database_detail_asset, asset)
+          |> assign(:database_detail_type, String.to_existing_atom(type))
+
+        {:noreply, socket}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Asset not found")}
+    end
+  end
+
+  @impl true
+  def handle_event("database_back", _params, socket) do
+    socket =
+      socket
+      |> assign(:database_detail_asset, nil)
+      |> assign(:database_detail_type, nil)
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("database_navigate", %{"type" => type, "id" => id}, socket) do
+    # Navigate to a related asset from detail view
+    asset_id = String.to_integer(id)
+    workspace = socket.assigns.workspace
+
+    case fetch_asset_detail(workspace.slug, type, asset_id) do
+      {:ok, asset} ->
+        socket =
+          socket
+          |> assign(:database_detail_asset, asset)
+          |> assign(:database_detail_type, String.to_existing_atom(type))
+
+        {:noreply, socket}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Asset not found")}
     end
   end
 
@@ -642,6 +880,21 @@ defmodule MsfailabWeb.WorkspaceLive do
     {:noreply, socket}
   end
 
+  # ---------------------------------------------------------------------------
+  # DatabaseUpdated Event (for asset count badge updates)
+  # ---------------------------------------------------------------------------
+
+  @impl true
+  def handle_info(%DatabaseUpdated{} = event, socket) do
+    # Update asset counts from event payload and optionally show flash
+    socket =
+      socket
+      |> assign(:asset_counts, event.totals)
+      |> maybe_show_database_flash(event.changes)
+
+    {:noreply, socket}
+  end
+
   # Ignore other PubSub events (CommandIssued, CommandResult handled by TrackServer)
   @impl true
   def handle_info(_event, socket) do
@@ -796,4 +1049,164 @@ defmodule MsfailabWeb.WorkspaceLive do
   defp maybe_assign_autonomous_mode(socket, track) do
     assign(socket, :autonomous_mode, track.autonomous)
   end
+
+  # ---------------------------------------------------------------------------
+  # Asset Count Helpers
+  # ---------------------------------------------------------------------------
+
+  defp empty_asset_counts do
+    %{
+      hosts: 0,
+      services: 0,
+      vulns: 0,
+      notes: 0,
+      creds: 0,
+      loots: 0,
+      sessions: 0,
+      total: 0
+    }
+  end
+
+  defp load_asset_counts(workspace) do
+    case MsfData.count_assets(workspace.slug) do
+      {:ok, counts} -> counts
+      {:error, _} -> empty_asset_counts()
+    end
+  end
+
+  # Shows a flash message when new assets are discovered
+  defp maybe_show_database_flash(socket, changes) do
+    case DatabaseUpdated.format_changes(changes) do
+      nil -> socket
+      message -> put_flash(socket, :info, message)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Database Browser Helpers
+  # ---------------------------------------------------------------------------
+
+  # Default sort configuration for each asset type
+  defp default_sort_for_tab(:hosts), do: %{field: :address, dir: :asc}
+  defp default_sort_for_tab(:services), do: %{field: :port, dir: :asc}
+  defp default_sort_for_tab(:vulns), do: %{field: :name, dir: :asc}
+  defp default_sort_for_tab(:notes), do: %{field: :created_at, dir: :desc}
+  defp default_sort_for_tab(:creds), do: %{field: :user, dir: :asc}
+  defp default_sort_for_tab(:loots), do: %{field: :created_at, dir: :desc}
+  defp default_sort_for_tab(:sessions), do: %{field: :opened_at, dir: :desc}
+  defp default_sort_for_tab(_), do: %{field: :id, dir: :asc}
+
+  # Loads assets for the current tab with sorting and pagination
+  defp load_database_assets(socket) do
+    workspace = socket.assigns.workspace
+    tab = socket.assigns.database_active_tab
+    sort_field = socket.assigns.database_sort_field
+    sort_dir = socket.assigns.database_sort_dir
+    page = socket.assigns.database_page
+    page_size = socket.assigns.database_page_size
+    search_term = socket.assigns.database_search_term
+
+    offset = (page - 1) * page_size
+
+    # MsfData list functions expect a map with atom keys
+    filters = %{
+      sort_by: sort_field,
+      sort_dir: sort_dir,
+      limit: page_size,
+      offset: offset
+    }
+
+    # Add search filter if provided
+    filters = if search_term != "", do: Map.put(filters, :search, search_term), else: filters
+
+    {assets, total_count} = fetch_assets_for_tab(workspace.slug, tab, filters)
+
+    socket
+    |> assign(:database_assets, assets)
+    |> assign(:database_total_count, total_count)
+  end
+
+  # Fetches assets and count for the given tab
+  # MsfData list functions return {:ok, %{hosts: [...], count: n, total_count: n}}
+  defp fetch_assets_for_tab(workspace_slug, :hosts, filters) do
+    case MsfData.list_hosts(workspace_slug, filters) do
+      {:ok, %{hosts: hosts, total_count: total}} -> {hosts, total}
+      {:error, _} -> {[], 0}
+    end
+  end
+
+  defp fetch_assets_for_tab(workspace_slug, :services, filters) do
+    case MsfData.list_services(workspace_slug, filters) do
+      {:ok, %{services: services, total_count: total}} -> {services, total}
+      {:error, _} -> {[], 0}
+    end
+  end
+
+  defp fetch_assets_for_tab(workspace_slug, :vulns, filters) do
+    case MsfData.list_vulns(workspace_slug, filters) do
+      {:ok, %{vulns: vulns, total_count: total}} -> {vulns, total}
+      {:error, _} -> {[], 0}
+    end
+  end
+
+  defp fetch_assets_for_tab(workspace_slug, :notes, filters) do
+    case MsfData.list_notes(workspace_slug, filters) do
+      {:ok, %{notes: notes, total_count: total}} -> {notes, total}
+      {:error, _} -> {[], 0}
+    end
+  end
+
+  defp fetch_assets_for_tab(workspace_slug, :creds, filters) do
+    case MsfData.list_creds(workspace_slug, filters) do
+      {:ok, %{creds: creds, total_count: total}} -> {creds, total}
+      {:error, _} -> {[], 0}
+    end
+  end
+
+  defp fetch_assets_for_tab(workspace_slug, :loots, filters) do
+    case MsfData.list_loots(workspace_slug, filters) do
+      {:ok, %{loots: loots, total_count: total}} -> {loots, total}
+      {:error, _} -> {[], 0}
+    end
+  end
+
+  defp fetch_assets_for_tab(workspace_slug, :sessions, filters) do
+    case MsfData.list_sessions(workspace_slug, filters) do
+      {:ok, %{sessions: sessions, total_count: total}} -> {sessions, total}
+      {:error, _} -> {[], 0}
+    end
+  end
+
+  defp fetch_assets_for_tab(_workspace_slug, _tab, _filters), do: {[], 0}
+
+  # Fetches a single asset for detail view
+  defp fetch_asset_detail(workspace_slug, "host", id) do
+    MsfData.get_host(workspace_slug, id)
+  end
+
+  defp fetch_asset_detail(workspace_slug, "service", id) do
+    MsfData.get_service(workspace_slug, id)
+  end
+
+  defp fetch_asset_detail(workspace_slug, "vuln", id) do
+    MsfData.get_vuln(workspace_slug, id)
+  end
+
+  defp fetch_asset_detail(workspace_slug, "note", id) do
+    MsfData.get_note(workspace_slug, id)
+  end
+
+  defp fetch_asset_detail(workspace_slug, "cred", id) do
+    MsfData.get_cred(workspace_slug, id)
+  end
+
+  defp fetch_asset_detail(workspace_slug, "loot", id) do
+    MsfData.get_loot(workspace_slug, id)
+  end
+
+  defp fetch_asset_detail(workspace_slug, "session", id) do
+    MsfData.get_session(workspace_slug, id)
+  end
+
+  defp fetch_asset_detail(_workspace_slug, _type, _id), do: {:error, :unknown_type}
 end

@@ -152,7 +152,7 @@ defmodule MsfailabWeb.ConsoleTest do
   describe "render_console_output/3" do
     test "renders prompt, command, and output" do
       {:safe, html} = Console.render_console_output("msf6 > ", "help", "[+] Success")
-      assert html =~ "<div>"
+      assert html =~ ~s(<div class="whitespace-pre-wrap">)
       assert html =~ "<u>msf</u>"
       assert html =~ "<strong>help</strong>"
       assert html =~ ~s(<span class="text-success">[+]</span>)

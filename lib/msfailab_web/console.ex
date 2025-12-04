@@ -140,13 +140,24 @@ defmodule MsfailabWeb.Console do
       {:safe, "<div>...</div><div class=\\"...\\">[+] Success</div>"}
 
   """
+  @spec render_console_output(String.t(), String.t(), String.t(), keyword()) ::
+          Phoenix.HTML.safe()
+  def render_console_output(prompt, command, output, opts \\ [])
+
   # sobelow_skip ["XSS.Raw"]
-  @spec render_console_output(String.t(), String.t(), String.t()) :: Phoenix.HTML.safe()
-  def render_console_output(prompt, command, output)
+  def render_console_output(prompt, command, output, opts)
       when is_binary(prompt) and is_binary(command) and is_binary(output) do
     command_html = console_command_html(prompt, command)
-    output_html = colorized_output_html(output)
-    Phoenix.HTML.raw("<div>#{command_html}</div>#{output_html}")
+
+    output_html =
+      if opts[:error] do
+        error_output_inline(output)
+      else
+        colorized_output_inline(output)
+      end
+
+    # Single div with command + newline + output for continuous terminal flow
+    Phoenix.HTML.raw("<div class=\"whitespace-pre-wrap\">#{command_html}#{output_html}</div>")
   end
 
   @doc """
@@ -162,12 +173,23 @@ defmodule MsfailabWeb.Console do
       {:safe, "<div><strong># ls -la</strong></div><div>...</div>"}
 
   """
+  @spec render_bash_output(String.t(), String.t(), keyword()) :: Phoenix.HTML.safe()
+  def render_bash_output(command, output, opts \\ [])
+
   # sobelow_skip ["XSS.Raw"]
-  @spec render_bash_output(String.t(), String.t()) :: Phoenix.HTML.safe()
-  def render_bash_output(command, output) when is_binary(command) and is_binary(output) do
+  def render_bash_output(command, output, opts)
+      when is_binary(command) and is_binary(output) do
     command_html = bash_command_html(command)
-    output_html = plain_output_html(output)
-    Phoenix.HTML.raw("<div>#{command_html}</div>#{output_html}")
+
+    output_html =
+      if opts[:error] do
+        error_output_inline(output)
+      else
+        plain_output_inline(output)
+      end
+
+    # Single div with command + newline + output for continuous terminal flow
+    Phoenix.HTML.raw("<div class=\"whitespace-pre-wrap\">#{command_html}#{output_html}</div>")
   end
 
   # Internal HTML builders (return raw strings, not safe tuples)
@@ -179,19 +201,28 @@ defmodule MsfailabWeb.Console do
     "<strong># #{escape(command)}</strong>"
   end
 
-  defp colorized_output_html(""), do: ""
+  # Inline version - returns content with leading newline, no wrapper div
+  defp colorized_output_inline(""), do: ""
 
-  defp colorized_output_html(output) do
+  defp colorized_output_inline(output) do
     output
     |> String.split("\n")
     |> Enum.map_join("\n", &colorize_line/1)
-    |> then(&"<div class=\"mt-1 whitespace-pre-wrap\">#{&1}</div>")
+    |> then(&"\n#{&1}")
   end
 
-  defp plain_output_html(""), do: ""
+  # Inline version - returns content with leading newline, no wrapper div
+  defp plain_output_inline(""), do: ""
 
-  defp plain_output_html(output) do
-    "<div class=\"mt-1 whitespace-pre-wrap\">#{escape(output)}</div>"
+  defp plain_output_inline(output) do
+    "\n#{escape(output)}"
+  end
+
+  # Error output - wrapped in red span
+  defp error_output_inline(""), do: ""
+
+  defp error_output_inline(output) do
+    "\n<span class=\"text-error\">#{escape(output)}</span>"
   end
 
   # Format prompt parts with MSF-specific styling

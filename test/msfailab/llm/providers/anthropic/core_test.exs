@@ -525,6 +525,7 @@ defmodule Msfailab.LLM.Providers.Anthropic.CoreTest do
         tools: [
           %Tool{
             name: "search",
+            short_title: "Searching",
             description: "Search for exploits",
             parameters: %{"type" => "object"}
           }
@@ -609,6 +610,7 @@ defmodule Msfailab.LLM.Providers.Anthropic.CoreTest do
       tools = [
         %Tool{
           name: "msf_command",
+          short_title: "Running MSF command",
           description: "Execute MSF command",
           parameters: %{"type" => "object", "properties" => %{}}
         }
@@ -623,7 +625,12 @@ defmodule Msfailab.LLM.Providers.Anthropic.CoreTest do
 
     test "includes cache_control when tool is cacheable (default)" do
       tools = [
-        %Tool{name: "search", description: "Search", parameters: %{"type" => "object"}}
+        %Tool{
+          name: "search",
+          short_title: "Searching",
+          description: "Search",
+          parameters: %{"type" => "object"}
+        }
       ]
 
       [transformed] = Core.transform_tools(tools)
@@ -635,6 +642,7 @@ defmodule Msfailab.LLM.Providers.Anthropic.CoreTest do
       tools = [
         %Tool{
           name: "search",
+          short_title: "Searching",
           description: "Search",
           parameters: %{"type" => "object"},
           cacheable: false

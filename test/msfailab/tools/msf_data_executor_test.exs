@@ -220,9 +220,7 @@ defmodule Msfailab.Tools.MsfDataExecutorTest do
       stype: "meterpreter",
       via_exploit: "exploit/test/module",
       opened_at: now,
-      host_id: host.id,
-      created_at: now,
-      updated_at: now
+      host_id: host.id
     }
 
     %Session{}
@@ -235,9 +233,7 @@ defmodule Msfailab.Tools.MsfDataExecutorTest do
       :platform,
       :opened_at,
       :closed_at,
-      :host_id,
-      :created_at,
-      :updated_at
+      :host_id
     ])
     |> Repo.insert!()
   end

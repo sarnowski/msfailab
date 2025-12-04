@@ -394,6 +394,7 @@ defmodule Msfailab.LLM.Providers.OllamaTest do
         tools: [
           %Tool{
             name: "msf_command",
+            short_title: "Running MSF command",
             description: "Execute MSF command",
             parameters: %{"type" => "object", "properties" => %{}}
           }
@@ -704,6 +705,7 @@ defmodule Msfailab.LLM.Providers.OllamaTest do
         tools: [
           %Tool{
             name: "msf_command",
+            short_title: "Running MSF command",
             description: "Execute command",
             parameters: %{
               "type" => "object",
@@ -1082,10 +1084,16 @@ defmodule Msfailab.LLM.Providers.OllamaTest do
         tools: [
           %Tool{
             name: "msf_command",
+            short_title: "Running MSF command",
             description: "Execute MSF command",
             parameters: %{"type" => "object"}
           },
-          %Tool{name: "list_hosts", description: "List hosts", parameters: %{"type" => "object"}}
+          %Tool{
+            name: "list_hosts",
+            short_title: "Listing hosts",
+            description: "List hosts",
+            parameters: %{"type" => "object"}
+          }
         ]
       }
 

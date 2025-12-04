@@ -56,10 +56,14 @@ defmodule Msfailab.Application do
         {Registry, keys: :unique, name: Msfailab.Containers.Registry},
         # Registry for track server process lookup by track_id
         {Registry, keys: :unique, name: Msfailab.Tracks.Registry},
+        # Registry for workspace server process lookup by workspace_id
+        {Registry, keys: :unique, name: Msfailab.Workspaces.Registry},
         # Container management subsystem
         Msfailab.Containers.Supervisor,
         # Track state management subsystem
-        Msfailab.Tracks.Supervisor
+        Msfailab.Tracks.Supervisor,
+        # Workspace monitoring subsystem (MSF database change detection)
+        Msfailab.Workspaces.Supervisor
       ]
     else
       []

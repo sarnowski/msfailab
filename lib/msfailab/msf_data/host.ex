@@ -31,7 +31,7 @@ defmodule Msfailab.MsfData.Host do
 
   @type t :: %__MODULE__{
           id: integer() | nil,
-          address: String.t() | nil,
+          address: EctoNetwork.INET.t() | nil,
           mac: String.t() | nil,
           name: String.t() | nil,
           state: String.t() | nil,
@@ -55,7 +55,7 @@ defmodule Msfailab.MsfData.Host do
         }
 
   schema "hosts" do
-    field :address, :string
+    field :address, EctoNetwork.INET
     field :mac, :string
     field :name, :string
     field :state, :string

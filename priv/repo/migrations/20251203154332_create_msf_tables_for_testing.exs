@@ -35,7 +35,7 @@ defmodule Msfailab.Repo.Migrations.CreateMsfTablesForTesting do
 
     # Hosts table
     create_if_not_exists table(:hosts) do
-      add :address, :string
+      add :address, :inet
       add :mac, :string
       add :name, :string, size: 512
       add :state, :string
@@ -152,7 +152,7 @@ defmodule Msfailab.Repo.Migrations.CreateMsfTablesForTesting do
 
     create_if_not_exists index(:loots, [:workspace_id])
 
-    # Sessions table
+    # Sessions table (no timestamps - MSF only has opened_at/closed_at)
     create_if_not_exists table(:sessions) do
       add :host_id, references(:hosts, on_delete: :delete_all)
       add :stype, :string, size: 256
@@ -163,8 +163,6 @@ defmodule Msfailab.Repo.Migrations.CreateMsfTablesForTesting do
       add :platform, :string
       add :opened_at, :utc_datetime
       add :closed_at, :utc_datetime
-
-      timestamps(inserted_at: :created_at, type: :utc_datetime)
     end
 
     create_if_not_exists index(:sessions, [:host_id])

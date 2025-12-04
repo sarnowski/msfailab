@@ -33,6 +33,7 @@ defmodule Msfailab.Tools.Tool do
   | `name` | `String.t()` | Unique identifier for the tool (e.g., `"msf_command"`) |
   | `description` | `String.t()` | Human-readable description for the LLM |
   | `parameters` | `map()` | JSON Schema defining the tool's input parameters |
+  | `short_title` | `String.t()` | Human-readable short title for UI display (e.g., `"Running MSF command"`) |
 
   ### Optional Fields
 
@@ -43,6 +44,14 @@ defmodule Msfailab.Tools.Tool do
   | `approval_required` | `boolean()` | `true` | Require user approval before execution |
   | `timeout` | `pos_integer() \\| nil` | `nil` | Max execution time in milliseconds |
   | `mutex` | `atom() \\| nil` | `nil` | Mutex group - tools with same mutex execute sequentially |
+
+  ### UI Rendering Fields (Optional)
+
+  | Field | Type | Default | Description |
+  |-------|------|---------|-------------|
+  | `render_collapsed` | `function \\| nil` | `nil` | Custom renderer for collapsed tool box |
+  | `render_expanded` | `function \\| nil` | `nil` | Custom renderer for expanded tool box |
+  | `render_approval_subject` | `function \\| nil` | `nil` | Custom renderer for approval prompt (REQUIRED if approval_required) |
 
   ## Mutex-Based Execution Grouping
 
@@ -86,20 +95,28 @@ defmodule Msfailab.Tools.Tool do
           name: String.t(),
           description: String.t(),
           parameters: map(),
+          short_title: String.t(),
           strict: boolean(),
           cacheable: boolean(),
           approval_required: boolean(),
           timeout: pos_integer() | nil,
-          mutex: atom() | nil
+          mutex: atom() | nil,
+          render_collapsed: (map() -> Phoenix.LiveView.Rendered.t()) | nil,
+          render_expanded: (map() -> Phoenix.LiveView.Rendered.t()) | nil,
+          render_approval_subject: (map() -> Phoenix.LiveView.Rendered.t()) | nil
         }
 
-  @enforce_keys [:name, :description, :parameters]
+  @enforce_keys [:name, :description, :parameters, :short_title]
   defstruct [
     :name,
     :description,
     :parameters,
+    :short_title,
     :timeout,
     :mutex,
+    :render_collapsed,
+    :render_expanded,
+    :render_approval_subject,
     strict: false,
     cacheable: true,
     approval_required: true

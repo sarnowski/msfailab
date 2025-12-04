@@ -155,6 +155,7 @@ defmodule Msfailab.ToolsTest do
     test "has correct defaults" do
       tool = %Tool{
         name: "test",
+        short_title: "Testing",
         description: "A test tool",
         parameters: %{"type" => "object", "properties" => %{}, "required" => []}
       }
@@ -169,6 +170,7 @@ defmodule Msfailab.ToolsTest do
     test "allows overriding defaults" do
       tool = %Tool{
         name: "test",
+        short_title: "Testing",
         description: "A test tool",
         parameters: %{"type" => "object", "properties" => %{}, "required" => []},
         strict: true,
@@ -186,6 +188,7 @@ defmodule Msfailab.ToolsTest do
     test "allows setting mutex to an atom" do
       tool = %Tool{
         name: "test",
+        short_title: "Testing",
         description: "A test tool",
         parameters: %{"type" => "object", "properties" => %{}, "required" => []},
         mutex: :test_mutex

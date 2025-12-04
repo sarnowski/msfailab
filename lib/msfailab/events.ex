@@ -190,6 +190,7 @@ defmodule Msfailab.Events do
   alias Msfailab.Events.CommandResult
   alias Msfailab.Events.ConsoleChanged
   alias Msfailab.Events.ConsoleUpdated
+  alias Msfailab.Events.DatabaseUpdated
   alias Msfailab.Events.WorkspaceChanged
   alias Msfailab.Events.WorkspacesChanged
   alias Msfailab.Trace
@@ -302,6 +303,11 @@ defmodule Msfailab.Events do
     Phoenix.PubSub.broadcast(@pubsub, workspace_topic(workspace_id), event)
   end
 
+  def broadcast(%DatabaseUpdated{workspace_id: workspace_id} = event) do
+    Trace.event(event)
+    Phoenix.PubSub.broadcast(@pubsub, workspace_topic(workspace_id), event)
+  end
+
   @doc """
   Broadcast an event locally (only to subscribers on this node).
 
@@ -339,6 +345,11 @@ defmodule Msfailab.Events do
   end
 
   def broadcast_local(%ConsoleUpdated{workspace_id: workspace_id} = event) do
+    Trace.event(event)
+    Phoenix.PubSub.local_broadcast(@pubsub, workspace_topic(workspace_id), event)
+  end
+
+  def broadcast_local(%DatabaseUpdated{workspace_id: workspace_id} = event) do
     Trace.event(event)
     Phoenix.PubSub.local_broadcast(@pubsub, workspace_topic(workspace_id), event)
   end

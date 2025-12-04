@@ -153,6 +153,7 @@ defmodule Msfailab.Tools do
   @tools [
     %Tool{
       name: "msf_command",
+      short_title: "Running MSF command",
       description:
         "Execute a command in the Metasploit Framework console. " <>
           "Use this to interact with MSF for security research tasks like searching for " <>
@@ -173,10 +174,16 @@ defmodule Msfailab.Tools do
       cacheable: true,
       approval_required: true,
       timeout: 60_000,
-      mutex: :msf_console
+      mutex: :msf_console,
+      # Custom rendering - msf_command has its own terminal-style display
+      render_collapsed: &MsfailabWeb.WorkspaceComponents.render_msf_command_collapsed/1,
+      render_expanded: &MsfailabWeb.WorkspaceComponents.render_msf_command_expanded/1,
+      render_approval_subject:
+        &MsfailabWeb.WorkspaceComponents.render_msf_command_approval_subject/1
     },
     %Tool{
       name: "bash_command",
+      short_title: "Executing bash command",
       description:
         "Execute a bash command in the research environment. " <>
           "Use this for file operations, network reconnaissance tools (nmap, curl, dig), " <>
@@ -196,11 +203,17 @@ defmodule Msfailab.Tools do
       strict: true,
       cacheable: true,
       approval_required: true,
-      timeout: 120_000
+      timeout: 120_000,
+      # Custom rendering - bash_command has its own terminal-style display
+      render_collapsed: &MsfailabWeb.WorkspaceComponents.render_bash_command_collapsed/1,
+      render_expanded: &MsfailabWeb.WorkspaceComponents.render_bash_command_expanded/1,
+      render_approval_subject:
+        &MsfailabWeb.WorkspaceComponents.render_bash_command_approval_subject/1
     },
     # Database query tools - these don't require approval as they're read-only
     %Tool{
       name: "list_hosts",
+      short_title: "Listing hosts",
       description:
         "Query discovered hosts from the Metasploit database. " <>
           "Returns host details including OS, architecture, and finding counts.",
@@ -239,6 +252,7 @@ defmodule Msfailab.Tools do
     },
     %Tool{
       name: "list_services",
+      short_title: "Listing services",
       description:
         "Query discovered services from the Metasploit database. " <>
           "Returns service details with host information.",
@@ -286,6 +300,7 @@ defmodule Msfailab.Tools do
     },
     %Tool{
       name: "list_vulns",
+      short_title: "Listing vulnerabilities",
       description:
         "Query discovered vulnerabilities from the Metasploit database. " <>
           "Returns vulnerability details with host, service, and references (CVE, MSB, EDB, etc.) always included.",
@@ -327,6 +342,7 @@ defmodule Msfailab.Tools do
     },
     %Tool{
       name: "list_creds",
+      short_title: "Listing credentials",
       description:
         "Query discovered credentials from the Metasploit database. " <>
           "Returns credential details with host and service information.",
@@ -368,6 +384,7 @@ defmodule Msfailab.Tools do
     },
     %Tool{
       name: "list_loots",
+      short_title: "Listing loot",
       description:
         "Query captured loot/artifacts from the Metasploit database. " <>
           "Returns loot metadata (use retrieve_loot for contents).",
@@ -401,6 +418,7 @@ defmodule Msfailab.Tools do
     },
     %Tool{
       name: "list_notes",
+      short_title: "Listing notes",
       description:
         "Query notes/annotations from the Metasploit database. " <>
           "Returns notes with associated host, service, or vulnerability information.",
@@ -438,6 +456,7 @@ defmodule Msfailab.Tools do
     },
     %Tool{
       name: "list_sessions",
+      short_title: "Listing sessions",
       description:
         "Query session history from the Metasploit database. " <>
           "Returns session details including exploit used and status.",
@@ -471,6 +490,7 @@ defmodule Msfailab.Tools do
     },
     %Tool{
       name: "retrieve_loot",
+      short_title: "Retrieving loot",
       description:
         "Retrieve the contents of a captured loot file. " <>
           "Use list_loots first to find entries, then retrieve specific contents.",
@@ -496,6 +516,7 @@ defmodule Msfailab.Tools do
     },
     %Tool{
       name: "create_note",
+      short_title: "Creating note",
       description:
         "Create a research note in the Metasploit database. Notes can be attached to hosts, services, or stand alone.\n\n" <>
           "Standard note types:\n" <>
@@ -543,6 +564,7 @@ defmodule Msfailab.Tools do
     # =========================================================================
     %Tool{
       name: "read_memory",
+      short_title: "Reading memory",
       description:
         "Read the current track memory state. Returns the agent's stored objective, focus, tasks, and working notes. " <>
           "Use this to recall your current state after context compaction.",
@@ -560,6 +582,7 @@ defmodule Msfailab.Tools do
     },
     %Tool{
       name: "update_memory",
+      short_title: "Updating memory",
       description:
         "Update track memory fields. Only provided fields are updated; others are preserved. " <>
           "Use 'objective' for your ultimate goal (rarely changes), 'focus' for current activity, " <>
@@ -593,6 +616,7 @@ defmodule Msfailab.Tools do
     },
     %Tool{
       name: "add_task",
+      short_title: "Adding task",
       description:
         "Add a new task to the memory task list. Tasks track planned work items with status. " <>
           "New tasks start with 'pending' status.",
@@ -615,6 +639,7 @@ defmodule Msfailab.Tools do
     },
     %Tool{
       name: "update_task",
+      short_title: "Updating task",
       description:
         "Update an existing task in the memory task list. Use to change status or content.",
       parameters: %{
@@ -645,6 +670,7 @@ defmodule Msfailab.Tools do
     },
     %Tool{
       name: "remove_task",
+      short_title: "Removing task",
       description:
         "Remove a task from the memory task list. Use when a task is no longer relevant.",
       parameters: %{

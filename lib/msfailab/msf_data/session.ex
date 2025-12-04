@@ -49,11 +49,12 @@ defmodule Msfailab.MsfData.Session do
           platform: String.t() | nil,
           opened_at: DateTime.t() | nil,
           closed_at: DateTime.t() | nil,
-          host: Host.t() | Ecto.Association.NotLoaded.t(),
-          created_at: DateTime.t() | nil,
-          updated_at: DateTime.t() | nil
+          host: Host.t() | Ecto.Association.NotLoaded.t()
         }
 
+  # Note: MSF sessions table doesn't have created_at/updated_at - only opened_at/closed_at
+  @primary_key {:id, :id, autogenerate: true}
+  @timestamps_opts []
   schema "sessions" do
     field :stype, :string
     field :via_exploit, :string
@@ -63,8 +64,6 @@ defmodule Msfailab.MsfData.Session do
     field :platform, :string
     field :opened_at, :utc_datetime
     field :closed_at, :utc_datetime
-    field :created_at, :utc_datetime
-    field :updated_at, :utc_datetime
 
     belongs_to :host, Host
   end

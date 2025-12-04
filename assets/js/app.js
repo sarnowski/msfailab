@@ -25,6 +25,9 @@ import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/msfailab"
 import topbar from "../vendor/topbar"
 
+// Global state for tool call box expansion (persists across LiveView updates)
+const toolBoxExpandedState = new Map()
+
 // Custom LiveView hooks
 const Hooks = {
   AutoResizeTextarea: {
@@ -257,6 +260,88 @@ const Hooks = {
 
     destroyed() {
       if (this.cleanup) this.cleanup()
+    }
+  },
+
+  AutoDismissFlash: {
+    mounted() {
+      // Auto-dismiss flash after 10 seconds
+      this.timeout = setTimeout(() => {
+        this.el.click() // Clicking the flash dismisses it
+      }, 10000)
+    },
+
+    destroyed() {
+      if (this.timeout) {
+        clearTimeout(this.timeout)
+      }
+    }
+  },
+
+  ToolCallBox: {
+    mounted() {
+      this.setupClickHandlers()
+      // Restore state if previously expanded
+      if (toolBoxExpandedState.get(this.el.id)) {
+        this.expand()
+      }
+    },
+
+    updated() {
+      // Restore expansion state after LiveView DOM patch
+      if (toolBoxExpandedState.get(this.el.id)) {
+        this.expand()
+      }
+      this.setupClickHandlers()
+    },
+
+    setupClickHandlers() {
+      const collapsed = this.el.querySelector('[data-collapsed]')
+      const expanded = this.el.querySelector('[data-expanded]')
+      const collapseTrigger = this.el.querySelector('[data-collapse-trigger]')
+
+      if (!collapsed || !expanded) return
+
+      // Toggle expansion when clicking collapsed view
+      collapsed.addEventListener('click', (e) => {
+        // Don't toggle if clicking on an interactive element
+        if (e.target.closest('button, a, input, select, textarea')) return
+        this.expand()
+      })
+
+      // Collapse when clicking the collapse trigger in expanded view
+      if (collapseTrigger) {
+        collapseTrigger.addEventListener('click', (e) => {
+          e.stopPropagation()
+          this.collapse()
+        })
+      }
+    },
+
+    expand() {
+      toolBoxExpandedState.set(this.el.id, true)
+      this.el.setAttribute('data-expanded', 'true')
+      const collapsed = this.el.querySelector('[data-collapsed]')
+      const expanded = this.el.querySelector('[data-expanded]')
+      if (collapsed) collapsed.classList.add('hidden')
+      if (expanded) expanded.classList.remove('hidden')
+      // Make expanded box block-level on its own row
+      this.el.classList.remove('inline-flex', 'float-right')
+      this.el.classList.add('block', 'clear-both')
+    },
+
+    collapse() {
+      toolBoxExpandedState.set(this.el.id, false)
+      this.el.setAttribute('data-expanded', 'false')
+      const collapsed = this.el.querySelector('[data-collapsed]')
+      const expanded = this.el.querySelector('[data-expanded]')
+      if (collapsed) collapsed.classList.remove('hidden')
+      if (expanded) expanded.classList.add('hidden')
+      // Restore inline floating for collapsed box (only if it was originally floating)
+      if (this.el.classList.contains('ml-2')) {
+        this.el.classList.remove('block', 'clear-both')
+        this.el.classList.add('inline-flex', 'float-right')
+      }
     }
   },
 

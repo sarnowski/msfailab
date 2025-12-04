@@ -17,7 +17,29 @@
 defmodule MsfailabWeb.WorkspaceComponentsTest do
   use ExUnit.Case, async: true
 
+  import Phoenix.LiveViewTest
+
+  alias Msfailab.Tracks.ChatEntry
   alias MsfailabWeb.WorkspaceComponents
+
+  # Helper to create a mock chat entry for tool testing
+  defp mock_tool_entry(attrs) do
+    base = %{
+      id: "test-entry-1",
+      position: 1,
+      entry_type: :tool_invocation,
+      streaming: false,
+      timestamp: DateTime.utc_now(),
+      tool_call_id: "call_123",
+      tool_name: "msf_command",
+      tool_arguments: %{"command" => "show options"},
+      tool_status: :success,
+      console_prompt: "msf6 exploit(test) > ",
+      result_content: "Module options:"
+    }
+
+    struct(ChatEntry, Map.merge(base, attrs))
+  end
 
   describe "msf_data_tool?/1" do
     test "returns true for list_hosts" do
@@ -105,6 +127,173 @@ defmodule MsfailabWeb.WorkspaceComponentsTest do
 
     test "returns 'Creating note...' for create_note" do
       assert WorkspaceComponents.msf_data_active_label("create_note") == "Creating note..."
+    end
+  end
+
+  describe "render_msf_command_approval_subject/1" do
+    test "renders console prompt and command" do
+      entry =
+        mock_tool_entry(%{
+          console_prompt: "msf6 > ",
+          tool_arguments: %{"command" => "search apache"}
+        })
+
+      html =
+        render_component(&WorkspaceComponents.render_msf_command_approval_subject/1, entry: entry)
+
+      # Console renders styled prompt - "msf" is underlined
+      assert html =~ "<u>msf</u>6"
+      assert html =~ "search apache"
+      assert html =~ "bg-neutral"
+    end
+
+    test "uses default prompt when console_prompt is nil" do
+      entry = mock_tool_entry(%{console_prompt: nil, tool_arguments: %{"command" => "help"}})
+
+      html =
+        render_component(&WorkspaceComponents.render_msf_command_approval_subject/1, entry: entry)
+
+      # Console renders styled prompt - "msf" is underlined
+      assert html =~ "<u>msf</u>6"
+      assert html =~ "help"
+    end
+  end
+
+  describe "render_msf_command_collapsed/1" do
+    test "renders collapsed terminal view with command" do
+      entry =
+        mock_tool_entry(%{tool_status: :success, tool_arguments: %{"command" => "db_status"}})
+
+      html = render_component(&WorkspaceComponents.render_msf_command_collapsed/1, entry: entry)
+
+      assert html =~ "db_status"
+      assert html =~ "cursor-pointer"
+      assert html =~ "truncate"
+    end
+
+    test "renders with executing status shows spinner icon" do
+      entry = mock_tool_entry(%{tool_status: :executing})
+
+      html = render_component(&WorkspaceComponents.render_msf_command_collapsed/1, entry: entry)
+
+      assert html =~ "loading"
+    end
+
+    test "renders with success status shows check icon" do
+      entry = mock_tool_entry(%{tool_status: :success})
+
+      html = render_component(&WorkspaceComponents.render_msf_command_collapsed/1, entry: entry)
+
+      assert html =~ "hero-check"
+    end
+
+    test "renders with error status shows x-mark icon" do
+      entry = mock_tool_entry(%{tool_status: :error})
+
+      html = render_component(&WorkspaceComponents.render_msf_command_collapsed/1, entry: entry)
+
+      assert html =~ "hero-x-mark"
+    end
+  end
+
+  describe "render_msf_command_expanded/1" do
+    test "renders expanded terminal box with output" do
+      entry =
+        mock_tool_entry(%{
+          tool_status: :success,
+          tool_arguments: %{"command" => "show exploits"},
+          result_content: "Exploit modules:\n  exploit/multi/handler"
+        })
+
+      html = render_component(&WorkspaceComponents.render_msf_command_expanded/1, entry: entry)
+
+      assert html =~ "msfconsole"
+      assert html =~ "show exploits"
+      assert html =~ "Exploit modules:"
+    end
+
+    test "renders cursor when executing" do
+      entry = mock_tool_entry(%{tool_status: :executing, result_content: ""})
+
+      html = render_component(&WorkspaceComponents.render_msf_command_expanded/1, entry: entry)
+
+      assert html =~ "terminal-cursor"
+    end
+
+    test "hides output section when result_content is empty and not executing" do
+      entry = mock_tool_entry(%{tool_status: :success, result_content: ""})
+
+      html = render_component(&WorkspaceComponents.render_msf_command_expanded/1, entry: entry)
+
+      # Should still have the command but no extra output div
+      assert html =~ "show options"
+      refute html =~ "terminal-cursor"
+    end
+  end
+
+  describe "render_bash_command_approval_subject/1" do
+    test "renders bash prompt and command" do
+      entry =
+        mock_tool_entry(%{tool_name: "bash_command", tool_arguments: %{"command" => "ls -la"}})
+
+      html =
+        render_component(&WorkspaceComponents.render_bash_command_approval_subject/1,
+          entry: entry
+        )
+
+      assert html =~ "ls -la"
+      assert html =~ "bg-neutral"
+    end
+  end
+
+  describe "render_bash_command_collapsed/1" do
+    test "renders collapsed terminal view with command" do
+      entry =
+        mock_tool_entry(%{
+          tool_name: "bash_command",
+          tool_status: :success,
+          tool_arguments: %{"command" => "pwd"}
+        })
+
+      html = render_component(&WorkspaceComponents.render_bash_command_collapsed/1, entry: entry)
+
+      assert html =~ "pwd"
+      assert html =~ "cursor-pointer"
+    end
+
+    test "renders status-appropriate icon" do
+      entry = mock_tool_entry(%{tool_name: "bash_command", tool_status: :error})
+
+      html = render_component(&WorkspaceComponents.render_bash_command_collapsed/1, entry: entry)
+
+      assert html =~ "hero-x-mark"
+    end
+  end
+
+  describe "render_bash_command_expanded/1" do
+    test "renders expanded terminal box with output" do
+      entry =
+        mock_tool_entry(%{
+          tool_name: "bash_command",
+          tool_status: :success,
+          tool_arguments: %{"command" => "echo hello"},
+          result_content: "hello"
+        })
+
+      html = render_component(&WorkspaceComponents.render_bash_command_expanded/1, entry: entry)
+
+      assert html =~ "bash"
+      assert html =~ "echo hello"
+      assert html =~ "hello"
+    end
+
+    test "renders cursor when executing" do
+      entry =
+        mock_tool_entry(%{tool_name: "bash_command", tool_status: :executing, result_content: ""})
+
+      html = render_component(&WorkspaceComponents.render_bash_command_expanded/1, entry: entry)
+
+      assert html =~ "terminal-cursor"
     end
   end
 end

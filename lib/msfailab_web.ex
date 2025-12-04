@@ -125,6 +125,8 @@ defmodule MsfailabWeb do
       import MsfailabWeb.CoreComponents
       # Workspace-specific UI components
       import MsfailabWeb.WorkspaceComponents
+      # Database browser components
+      import MsfailabWeb.DatabaseBrowser
 
       # Common modules used in templates
       alias MsfailabWeb.Layouts

@@ -18,7 +18,7 @@ defmodule Msfailab.MsfDataTest do
   use Msfailab.DataCase, async: true
 
   alias Msfailab.MsfData
-  alias Msfailab.MsfData.{Host, MsfWorkspace, Note, Service, Session, Vuln}
+  alias Msfailab.MsfData.{Cred, Host, Loot, MsfWorkspace, Note, Service, Session, Vuln}
   alias Msfailab.Repo
 
   # ============================================================================
@@ -168,9 +168,7 @@ defmodule Msfailab.MsfDataTest do
       stype: "meterpreter",
       via_exploit: "exploit/test/module",
       opened_at: now,
-      host_id: host.id,
-      created_at: now,
-      updated_at: now
+      host_id: host.id
     }
 
     %Session{}
@@ -183,7 +181,63 @@ defmodule Msfailab.MsfDataTest do
       :platform,
       :opened_at,
       :closed_at,
+      :host_id
+    ])
+    |> Repo.insert!()
+  end
+
+  defp create_cred(service, attrs \\ %{}) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    default = %{
+      user: "admin",
+      pass: "password123",
+      ptype: "password",
+      active: true,
+      service_id: service.id,
+      created_at: now,
+      updated_at: now
+    }
+
+    %Cred{}
+    |> Ecto.Changeset.cast(Map.merge(default, attrs), [
+      :user,
+      :pass,
+      :ptype,
+      :active,
+      :proof,
+      :service_id,
+      :created_at,
+      :updated_at
+    ])
+    |> Repo.insert!()
+  end
+
+  defp create_loot(workspace, attrs) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    default = %{
+      ltype: "host.files",
+      name: "test_loot.txt",
+      info: "Test loot file",
+      content_type: "text/plain",
+      path: "/tmp/test_loot.txt",
+      workspace_id: workspace.id,
+      created_at: now,
+      updated_at: now
+    }
+
+    %Loot{}
+    |> Ecto.Changeset.cast(Map.merge(default, attrs), [
+      :ltype,
+      :name,
+      :info,
+      :content_type,
+      :path,
+      :data,
+      :workspace_id,
       :host_id,
+      :service_id,
       :created_at,
       :updated_at
     ])
@@ -258,6 +312,106 @@ defmodule Msfailab.MsfDataTest do
     test "returns error for non-existent workspace" do
       assert {:error, :workspace_not_found} == MsfData.list_hosts("nonexistent")
     end
+
+    test "sorts by address ascending" do
+      workspace = create_msf_workspace()
+      _h1 = create_host(workspace, %{address: "10.0.0.3"})
+      _h2 = create_host(workspace, %{address: "10.0.0.1"})
+      _h3 = create_host(workspace, %{address: "10.0.0.2"})
+
+      {:ok, result} = MsfData.list_hosts(workspace.name, %{sort_by: :address, sort_dir: :asc})
+
+      addresses = Enum.map(result.hosts, & &1.address)
+      assert addresses == ["10.0.0.1", "10.0.0.2", "10.0.0.3"]
+    end
+
+    test "sorts by address descending" do
+      workspace = create_msf_workspace()
+      _h1 = create_host(workspace, %{address: "10.0.0.1"})
+      _h2 = create_host(workspace, %{address: "10.0.0.3"})
+      _h3 = create_host(workspace, %{address: "10.0.0.2"})
+
+      {:ok, result} = MsfData.list_hosts(workspace.name, %{sort_by: :address, sort_dir: :desc})
+
+      addresses = Enum.map(result.hosts, & &1.address)
+      assert addresses == ["10.0.0.3", "10.0.0.2", "10.0.0.1"]
+    end
+
+    test "sorts by name" do
+      workspace = create_msf_workspace()
+      _h1 = create_host(workspace, %{address: "10.0.0.1", name: "charlie"})
+      _h2 = create_host(workspace, %{address: "10.0.0.2", name: "alpha"})
+      _h3 = create_host(workspace, %{address: "10.0.0.3", name: "bravo"})
+
+      {:ok, result} = MsfData.list_hosts(workspace.name, %{sort_by: :name, sort_dir: :asc})
+
+      names = Enum.map(result.hosts, & &1.name)
+      assert names == ["alpha", "bravo", "charlie"]
+    end
+
+    test "defaults to updated_at desc when no sort specified" do
+      workspace = create_msf_workspace()
+      base_time = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      _h1 =
+        create_host(workspace, %{address: "10.0.0.1", updated_at: DateTime.add(base_time, -60)})
+
+      _h2 = create_host(workspace, %{address: "10.0.0.2", updated_at: base_time})
+
+      _h3 =
+        create_host(workspace, %{address: "10.0.0.3", updated_at: DateTime.add(base_time, -30)})
+
+      {:ok, result} = MsfData.list_hosts(workspace.name)
+
+      # Default is updated_at desc, so most recent first
+      addresses = Enum.map(result.hosts, & &1.address)
+      assert addresses == ["10.0.0.2", "10.0.0.3", "10.0.0.1"]
+    end
+
+    test "paginates with offset and returns total_count" do
+      workspace = create_msf_workspace()
+
+      for i <- 1..10 do
+        create_host(workspace, %{address: "10.0.0.#{i}"})
+      end
+
+      {:ok, result} = MsfData.list_hosts(workspace.name, %{offset: 0, limit: 3})
+
+      assert result.count == 3
+      assert result.total_count == 10
+      assert length(result.hosts) == 3
+    end
+
+    test "offset skips the specified number of records" do
+      workspace = create_msf_workspace()
+
+      for i <- 1..5 do
+        create_host(workspace, %{address: "10.0.0.#{i}"})
+      end
+
+      # Sort by address ascending for predictable order
+      {:ok, page1} =
+        MsfData.list_hosts(workspace.name, %{
+          offset: 0,
+          limit: 2,
+          sort_by: :address,
+          sort_dir: :asc
+        })
+
+      {:ok, page2} =
+        MsfData.list_hosts(workspace.name, %{
+          offset: 2,
+          limit: 2,
+          sort_by: :address,
+          sort_dir: :asc
+        })
+
+      page1_addresses = Enum.map(page1.hosts, & &1.address)
+      page2_addresses = Enum.map(page2.hosts, & &1.address)
+
+      assert page1_addresses == ["10.0.0.1", "10.0.0.2"]
+      assert page2_addresses == ["10.0.0.3", "10.0.0.4"]
+    end
   end
 
   # ============================================================================
@@ -308,6 +462,32 @@ defmodule Msfailab.MsfDataTest do
       {:ok, result} = MsfData.list_services(workspace.name)
 
       assert hd(result.services).host_address == "10.0.0.5"
+    end
+
+    test "sorts by port ascending" do
+      workspace = create_msf_workspace()
+      host = create_host(workspace)
+      _s1 = create_service(host, %{port: 443})
+      _s2 = create_service(host, %{port: 22})
+      _s3 = create_service(host, %{port: 80})
+
+      {:ok, result} = MsfData.list_services(workspace.name, %{sort_by: :port, sort_dir: :asc})
+
+      ports = Enum.map(result.services, & &1.port)
+      assert ports == [22, 80, 443]
+    end
+
+    test "sorts by port descending" do
+      workspace = create_msf_workspace()
+      host = create_host(workspace)
+      _s1 = create_service(host, %{port: 22})
+      _s2 = create_service(host, %{port: 443})
+      _s3 = create_service(host, %{port: 80})
+
+      {:ok, result} = MsfData.list_services(workspace.name, %{sort_by: :port, sort_dir: :desc})
+
+      ports = Enum.map(result.services, & &1.port)
+      assert ports == [443, 80, 22]
     end
   end
 
@@ -511,6 +691,427 @@ defmodule Msfailab.MsfDataTest do
           data: "test",
           host: "10.99.99.99"
         })
+    end
+  end
+
+  # ============================================================================
+  # count_assets/1
+  # ============================================================================
+
+  describe "count_assets/1" do
+    test "returns zero counts for empty workspace" do
+      workspace = create_msf_workspace()
+
+      {:ok, counts} = MsfData.count_assets(workspace.name)
+
+      assert counts == %{
+               hosts: 0,
+               services: 0,
+               vulns: 0,
+               notes: 0,
+               creds: 0,
+               loots: 0,
+               sessions: 0,
+               total: 0
+             }
+    end
+
+    test "returns correct counts for all asset types" do
+      workspace = create_msf_workspace()
+
+      # Create hosts
+      host1 = create_host(workspace, %{address: "10.0.0.1"})
+      host2 = create_host(workspace, %{address: "10.0.0.2"})
+
+      # Create services
+      service1 = create_service(host1, %{port: 22, name: "ssh"})
+      service2 = create_service(host1, %{port: 80, name: "http"})
+      _service3 = create_service(host2, %{port: 443, name: "https"})
+
+      # Create vulns
+      create_vuln(host1)
+      create_vuln(host2)
+
+      # Create notes
+      create_note(workspace)
+      create_note(workspace)
+      create_note(workspace)
+
+      # Create creds
+      create_cred(service1)
+      create_cred(service2)
+
+      # Create loots
+      create_loot(workspace, %{host_id: host1.id})
+
+      # Create sessions
+      create_session(host1)
+      create_session(host2)
+
+      {:ok, counts} = MsfData.count_assets(workspace.name)
+
+      assert counts == %{
+               hosts: 2,
+               services: 3,
+               vulns: 2,
+               notes: 3,
+               creds: 2,
+               loots: 1,
+               sessions: 2,
+               total: 15
+             }
+    end
+
+    test "counts are scoped to workspace" do
+      workspace1 = create_msf_workspace()
+      workspace2 = create_msf_workspace()
+
+      # Create assets in workspace1
+      host1 = create_host(workspace1, %{address: "10.0.0.1"})
+      create_service(host1, %{port: 22})
+      create_note(workspace1)
+
+      # Create assets in workspace2
+      host2 = create_host(workspace2, %{address: "10.0.0.2"})
+      create_service(host2, %{port: 80})
+      create_service(host2, %{port: 443})
+      create_note(workspace2)
+      create_note(workspace2)
+
+      {:ok, counts1} = MsfData.count_assets(workspace1.name)
+      {:ok, counts2} = MsfData.count_assets(workspace2.name)
+
+      assert counts1.hosts == 1
+      assert counts1.services == 1
+      assert counts1.notes == 1
+
+      assert counts2.hosts == 1
+      assert counts2.services == 2
+      assert counts2.notes == 2
+    end
+
+    test "returns error for non-existent workspace" do
+      assert {:error, :workspace_not_found} == MsfData.count_assets("nonexistent")
+    end
+  end
+
+  # ============================================================================
+  # get_host/2
+  # ============================================================================
+
+  describe "get_host/2" do
+    test "returns host with related counts" do
+      workspace = create_msf_workspace()
+      host = create_host(workspace, %{address: "10.0.0.5", name: "testhost"})
+      service = create_service(host, %{port: 80})
+      create_vuln(host)
+      create_note(workspace, %{host_id: host.id})
+      create_session(host)
+      create_loot(workspace, %{host_id: host.id})
+      create_cred(service)
+
+      {:ok, result} = MsfData.get_host(workspace.name, host.id)
+
+      assert result.id == host.id
+      assert result.address == "10.0.0.5"
+      assert result.name == "testhost"
+      assert result.services_count == 1
+      assert result.vulns_count == 1
+      assert result.notes_count == 1
+      assert result.sessions_count == 1
+      assert result.loots_count == 1
+    end
+
+    test "returns error for non-existent host" do
+      workspace = create_msf_workspace()
+
+      assert {:error, :not_found} == MsfData.get_host(workspace.name, 99_999)
+    end
+
+    test "returns error for non-existent workspace" do
+      assert {:error, :workspace_not_found} == MsfData.get_host("nonexistent", 1)
+    end
+  end
+
+  # ============================================================================
+  # get_service/2
+  # ============================================================================
+
+  describe "get_service/2" do
+    test "returns service with host info and related counts" do
+      workspace = create_msf_workspace()
+      host = create_host(workspace, %{address: "10.0.0.5", name: "testhost", os_name: "Linux"})
+      service = create_service(host, %{port: 80, name: "http"})
+      create_vuln(host, %{service_id: service.id})
+      create_cred(service)
+      create_note(workspace, %{host_id: host.id, service_id: service.id})
+
+      {:ok, result} = MsfData.get_service(workspace.name, service.id)
+
+      assert result.id == service.id
+      assert result.port == 80
+      assert result.host_address == "10.0.0.5"
+      assert result.host_name == "testhost"
+      assert result.host_os == "Linux"
+      assert result.vulns_count == 1
+      assert result.creds_count == 1
+      assert result.notes_count == 1
+    end
+
+    test "returns error for non-existent service" do
+      workspace = create_msf_workspace()
+
+      assert {:error, :not_found} == MsfData.get_service(workspace.name, 99_999)
+    end
+  end
+
+  # ============================================================================
+  # get_vuln/2
+  # ============================================================================
+
+  describe "get_vuln/2" do
+    test "returns vuln with host and service info" do
+      workspace = create_msf_workspace()
+      host = create_host(workspace, %{address: "10.0.0.5", name: "testhost", os_name: "Windows"})
+      service = create_service(host, %{port: 445, proto: "tcp", name: "smb"})
+      vuln = create_vuln(host, %{service_id: service.id, name: "exploit/windows/smb/ms17_010"})
+
+      {:ok, result} = MsfData.get_vuln(workspace.name, vuln.id)
+
+      assert result.id == vuln.id
+      assert result.name == "exploit/windows/smb/ms17_010"
+      assert result.host_address == "10.0.0.5"
+      assert result.host_name == "testhost"
+      assert result.host_os == "Windows"
+      assert result.service_port == 445
+      assert result.service_proto == "tcp"
+      assert result.service_name == "smb"
+    end
+
+    test "returns vuln without service info when no service" do
+      workspace = create_msf_workspace()
+      host = create_host(workspace, %{address: "10.0.0.5"})
+      vuln = create_vuln(host, %{service_id: nil})
+
+      {:ok, result} = MsfData.get_vuln(workspace.name, vuln.id)
+
+      assert result.id == vuln.id
+      assert result.host_address == "10.0.0.5"
+      refute Map.has_key?(result, :service_port)
+    end
+
+    test "returns error for non-existent vuln" do
+      workspace = create_msf_workspace()
+
+      assert {:error, :not_found} == MsfData.get_vuln(workspace.name, 99_999)
+    end
+  end
+
+  # ============================================================================
+  # get_note/2
+  # ============================================================================
+
+  describe "get_note/2" do
+    test "returns note with host and service info" do
+      workspace = create_msf_workspace()
+      host = create_host(workspace, %{address: "10.0.0.5", name: "testhost"})
+      service = create_service(host, %{port: 80, proto: "tcp", name: "http"})
+      note = create_note(workspace, %{host_id: host.id, service_id: service.id})
+
+      {:ok, result} = MsfData.get_note(workspace.name, note.id)
+
+      assert result.id == note.id
+      assert result.host_address == "10.0.0.5"
+      assert result.host_name == "testhost"
+      assert result.service_port == 80
+      assert result.service_name == "http"
+    end
+
+    test "returns note without host/service when not attached" do
+      workspace = create_msf_workspace()
+      note = create_note(workspace, %{host_id: nil, service_id: nil})
+
+      {:ok, result} = MsfData.get_note(workspace.name, note.id)
+
+      assert result.id == note.id
+      assert result.host_address == nil
+    end
+
+    test "returns error for non-existent note" do
+      workspace = create_msf_workspace()
+
+      assert {:error, :not_found} == MsfData.get_note(workspace.name, 99_999)
+    end
+  end
+
+  # ============================================================================
+  # get_cred/2
+  # ============================================================================
+
+  describe "get_cred/2" do
+    test "returns cred with host and service info" do
+      workspace = create_msf_workspace()
+      host = create_host(workspace, %{address: "10.0.0.5", name: "testhost", os_name: "Linux"})
+      service = create_service(host, %{port: 22, proto: "tcp", name: "ssh", info: "OpenSSH"})
+      cred = create_cred(service, %{user: "admin", pass: "secret123"})
+
+      {:ok, result} = MsfData.get_cred(workspace.name, cred.id)
+
+      assert result.id == cred.id
+      assert result.user == "admin"
+      assert result.pass == "secret123"
+      assert result.host_id == host.id
+      assert result.host_address == "10.0.0.5"
+      assert result.host_name == "testhost"
+      assert result.service_id == service.id
+      assert result.service_port == 22
+      assert result.service_proto == "tcp"
+      assert result.service_info == "OpenSSH"
+    end
+
+    test "returns error for non-existent cred" do
+      workspace = create_msf_workspace()
+
+      assert {:error, :not_found} == MsfData.get_cred(workspace.name, 99_999)
+    end
+  end
+
+  # ============================================================================
+  # get_loot/2
+  # ============================================================================
+
+  describe "get_loot/2" do
+    test "returns loot with host info and data" do
+      workspace = create_msf_workspace()
+      host = create_host(workspace, %{address: "10.0.0.5", name: "testhost", os_name: "Linux"})
+      loot = create_loot(workspace, %{host_id: host.id, data: "secret content"})
+
+      {:ok, result} = MsfData.get_loot(workspace.name, loot.id)
+
+      assert result.id == loot.id
+      assert result.host_address == "10.0.0.5"
+      assert result.host_name == "testhost"
+      assert result.host_os == "Linux"
+      assert result.data == "secret content"
+    end
+
+    test "returns loot without host when not attached" do
+      workspace = create_msf_workspace()
+      loot = create_loot(workspace, %{host_id: nil})
+
+      {:ok, result} = MsfData.get_loot(workspace.name, loot.id)
+
+      assert result.id == loot.id
+      assert result.host_address == nil
+    end
+
+    test "returns error for non-existent loot" do
+      workspace = create_msf_workspace()
+
+      assert {:error, :not_found} == MsfData.get_loot(workspace.name, 99_999)
+    end
+  end
+
+  # ============================================================================
+  # get_session/2
+  # ============================================================================
+
+  describe "get_session/2" do
+    test "returns session with host info" do
+      workspace = create_msf_workspace()
+      host = create_host(workspace, %{address: "10.0.0.5", name: "testhost", os_name: "Windows"})
+
+      session =
+        create_session(host, %{
+          stype: "meterpreter",
+          via_exploit: "exploit/windows/smb/ms17_010"
+        })
+
+      {:ok, result} = MsfData.get_session(workspace.name, session.id)
+
+      assert result.id == session.id
+      assert result.stype == "meterpreter"
+      assert result.host_address == "10.0.0.5"
+      assert result.host_name == "testhost"
+      assert result.host_os == "Windows"
+    end
+
+    test "returns error for non-existent session" do
+      workspace = create_msf_workspace()
+
+      assert {:error, :not_found} == MsfData.get_session(workspace.name, 99_999)
+    end
+  end
+
+  # ============================================================================
+  # count_assets/2 (with search filter)
+  # ============================================================================
+
+  describe "count_assets/2" do
+    test "filters counts by search term matching hostname" do
+      workspace = create_msf_workspace()
+
+      host1 = create_host(workspace, %{address: "10.0.0.1", name: "webserver"})
+      host2 = create_host(workspace, %{address: "10.0.0.2", name: "database"})
+      create_service(host1, %{port: 80, name: "http"})
+      create_service(host2, %{port: 3306, name: "mysql"})
+
+      {:ok, counts} = MsfData.count_assets(workspace.name, "webserver")
+
+      assert counts.hosts == 1
+      # Services don't match "webserver" in their fields
+      assert counts.services == 0
+    end
+
+    test "filters counts by search term matching service name" do
+      workspace = create_msf_workspace()
+
+      host = create_host(workspace, %{address: "10.0.0.1", name: "server1"})
+      create_service(host, %{port: 80, name: "http", info: "Apache HTTP Server"})
+      create_service(host, %{port: 22, name: "ssh"})
+
+      {:ok, counts} = MsfData.count_assets(workspace.name, "apache")
+
+      assert counts.hosts == 0
+      assert counts.services == 1
+    end
+
+    test "filters counts by search term matching vuln name" do
+      workspace = create_msf_workspace()
+
+      host = create_host(workspace, %{address: "10.0.0.1"})
+      create_vuln(host, %{name: "exploit/windows/smb/ms17_010_eternalblue"})
+      create_vuln(host, %{name: "exploit/linux/ssh/weak_keys"})
+
+      {:ok, counts} = MsfData.count_assets(workspace.name, "eternalblue")
+
+      assert counts.vulns == 1
+    end
+
+    test "search is case-insensitive" do
+      workspace = create_msf_workspace()
+
+      _host = create_host(workspace, %{address: "10.0.0.1", name: "WebServer"})
+
+      {:ok, counts} = MsfData.count_assets(workspace.name, "webserver")
+
+      assert counts.hosts == 1
+    end
+
+    test "empty search term returns all counts" do
+      workspace = create_msf_workspace()
+
+      host = create_host(workspace, %{address: "10.0.0.1"})
+      create_service(host, %{port: 80})
+
+      {:ok, counts_with_empty} = MsfData.count_assets(workspace.name, "")
+      {:ok, counts_without} = MsfData.count_assets(workspace.name)
+
+      assert counts_with_empty == counts_without
+    end
+
+    test "returns error for non-existent workspace" do
+      assert {:error, :workspace_not_found} == MsfData.count_assets("nonexistent", "search")
     end
   end
 end
