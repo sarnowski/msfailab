@@ -93,7 +93,7 @@ defmodule Msfailab.Tools.MemoryExecutor do
   end
 
   def execute("add_task", _args, %{track_id: _}) do
-    {:error, "Missing required parameter: content"}
+    {:error, {:missing_parameter, "Missing required parameter: content"}}
   end
 
   def execute("update_task", %{"id" => id} = args, %{track_id: track_id}) do
@@ -112,13 +112,13 @@ defmodule Msfailab.Tools.MemoryExecutor do
           persist_and_return(track_id, updated)
 
         {:error, :task_not_found} ->
-          {:error, "Task not found: #{id}"}
+          {:error, {:task_not_found, "Task not found: #{id}"}}
       end
     end
   end
 
   def execute("update_task", _args, %{track_id: _}) do
-    {:error, "Missing required parameter: id"}
+    {:error, {:missing_parameter, "Missing required parameter: id"}}
   end
 
   def execute("remove_task", %{"id" => id}, %{track_id: track_id}) do
@@ -129,7 +129,7 @@ defmodule Msfailab.Tools.MemoryExecutor do
   end
 
   def execute("remove_task", _args, %{track_id: _}) do
-    {:error, "Missing required parameter: id"}
+    {:error, {:missing_parameter, "Missing required parameter: id"}}
   end
 
   # ============================================================================
@@ -138,7 +138,7 @@ defmodule Msfailab.Tools.MemoryExecutor do
 
   defp load_memory(track_id) do
     case Tracks.get_track(track_id) do
-      nil -> {:error, :track_not_found}
+      nil -> {:error, {:track_not_found, "Track not found"}}
       track -> {:ok, track.memory || Memory.new()}
     end
   end

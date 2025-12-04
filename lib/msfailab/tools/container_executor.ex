@@ -70,7 +70,7 @@ defmodule Msfailab.Tools.ContainerExecutor do
   # coveralls-ignore-stop
 
   def execute("execute_msfconsole_command", _args, _context) do
-    {:error, "Missing required parameter: command"}
+    {:error, {:missing_parameter, "Missing required parameter: command"}}
   end
 
   # coveralls-ignore-start
@@ -87,7 +87,7 @@ defmodule Msfailab.Tools.ContainerExecutor do
   # coveralls-ignore-stop
 
   def execute("execute_bash_command", _args, _context) do
-    {:error, "Missing required parameter: command"}
+    {:error, {:missing_parameter, "Missing required parameter: command"}}
   end
 
   # ---------------------------------------------------------------------------
@@ -180,7 +180,7 @@ defmodule Msfailab.Tools.ContainerExecutor do
     if elapsed > timing.max_wait_time do
       # coveralls-ignore-next-line
       Logger.warning("msf_command timed out waiting for console (#{elapsed}ms)")
-      {:error, :console_wait_timeout}
+      {:error, {:console_timeout, "Console did not become ready in time"}}
     else
       case try_fn.() do
         {:ok, command_id} ->

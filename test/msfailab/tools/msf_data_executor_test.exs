@@ -292,8 +292,10 @@ defmodule Msfailab.Tools.MsfDataExecutorTest do
     end
 
     test "returns error for non-existent workspace" do
-      {:error, :workspace_not_found} =
+      {:error, {:workspace_not_found, message}} =
         MsfDataExecutor.execute("list_hosts", %{}, %{workspace_slug: "nonexistent"})
+
+      assert message =~ "not found" or message =~ "nonexistent"
     end
   end
 
@@ -530,12 +532,14 @@ defmodule Msfailab.Tools.MsfDataExecutorTest do
     test "returns error for non-existent loot" do
       workspace = create_msf_workspace("test-executor-retrieve-loot-notfound")
 
-      {:error, :loot_not_found} =
+      {:error, {:loot_not_found, message}} =
         MsfDataExecutor.execute(
           "retrieve_loot",
           %{"loot_id" => 99_999},
           %{workspace_slug: workspace.name}
         )
+
+      assert message =~ "not found" or message =~ "99999"
     end
   end
 
@@ -578,7 +582,7 @@ defmodule Msfailab.Tools.MsfDataExecutorTest do
     end
 
     test "returns error for non-existent workspace" do
-      {:error, :workspace_not_found} =
+      {:error, {:workspace_not_found, message}} =
         MsfDataExecutor.execute(
           "create_note",
           %{
@@ -587,6 +591,8 @@ defmodule Msfailab.Tools.MsfDataExecutorTest do
           },
           %{workspace_slug: "nonexistent"}
         )
+
+      assert message =~ "not found" or message =~ "nonexistent"
     end
   end
 
@@ -623,23 +629,27 @@ defmodule Msfailab.Tools.MsfDataExecutorTest do
     test "returns error when note_id not provided" do
       workspace = create_msf_workspace("test-executor-read-note-missing-id")
 
-      {:error, :missing_note_id} =
+      {:error, {:missing_parameter, message}} =
         MsfDataExecutor.execute(
           "read_note",
           %{},
           %{workspace_slug: workspace.name}
         )
+
+      assert message =~ "note_id"
     end
 
     test "returns error for non-existent note" do
       workspace = create_msf_workspace("test-executor-read-note-notfound")
 
-      {:error, :not_found} =
+      {:error, {:note_not_found, message}} =
         MsfDataExecutor.execute(
           "read_note",
           %{"note_id" => 99_999},
           %{workspace_slug: workspace.name}
         )
+
+      assert message =~ "not found" or message =~ "99999"
     end
 
     test "includes is_serialized true for Marshal data" do
@@ -665,8 +675,10 @@ defmodule Msfailab.Tools.MsfDataExecutorTest do
 
   describe "execute unknown tool" do
     test "returns error for unknown tool" do
-      {:error, {:unknown_tool, "unknown"}} =
+      {:error, {:unknown_tool, message}} =
         MsfDataExecutor.execute("unknown", %{}, %{workspace_slug: "test"})
+
+      assert message =~ "unknown" or message =~ "Unknown"
     end
   end
 end

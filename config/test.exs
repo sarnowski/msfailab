@@ -33,6 +33,9 @@ config :msfailab, start_containers: false
 # Don't start LLM supervision tree in tests - tests use mocked providers
 config :msfailab, start_llm: false
 
+# Don't start skills registry automatically in tests - tests manage their own
+config :msfailab, start_skills: false
+
 # LLM HTTP request options - fast timeouts and no retries for tests
 config :msfailab, :llm_req_options, receive_timeout: 10, retry: false
 

@@ -40,19 +40,23 @@ defmodule Msfailab.Tools.ContainerExecutorTest do
     test "returns error for missing command parameter" do
       context = %{container_id: 1, track_id: 1}
 
-      assert {:error, "Missing required parameter: command"} =
+      assert {:error, {:missing_parameter, message}} =
                ContainerExecutor.execute("execute_msfconsole_command", %{}, context)
+
+      assert message =~ "command"
     end
 
     test "returns error when command key has wrong name" do
       context = %{container_id: 1, track_id: 1}
 
-      assert {:error, "Missing required parameter: command"} =
+      assert {:error, {:missing_parameter, message}} =
                ContainerExecutor.execute(
                  "execute_msfconsole_command",
                  %{"cmd" => "help"},
                  context
                )
+
+      assert message =~ "command"
     end
   end
 
@@ -60,15 +64,19 @@ defmodule Msfailab.Tools.ContainerExecutorTest do
     test "returns error for missing command parameter" do
       context = %{container_id: 1, track_id: 1}
 
-      assert {:error, "Missing required parameter: command"} =
+      assert {:error, {:missing_parameter, message}} =
                ContainerExecutor.execute("execute_bash_command", %{}, context)
+
+      assert message =~ "command"
     end
 
     test "returns error when command key has wrong name" do
       context = %{container_id: 1, track_id: 1}
 
-      assert {:error, "Missing required parameter: command"} =
+      assert {:error, {:missing_parameter, message}} =
                ContainerExecutor.execute("execute_bash_command", %{"cmd" => "ls"}, context)
+
+      assert message =~ "command"
     end
   end
 
@@ -121,10 +129,12 @@ defmodule Msfailab.Tools.ContainerExecutorTest do
 
     test "returns error immediately on permanent error" do
       timing = %{initial_delay: 1, max_delay: 10, max_wait_time: 100}
-      try_fn = fn -> {:error, :container_not_running} end
+      try_fn = fn -> {:error, {:container_not_running, "Container is not running"}} end
 
-      assert {:error, :container_not_running} =
+      assert {:error, {:container_not_running, message}} =
                ContainerExecutor.retry_until_ready(try_fn, timing)
+
+      assert message =~ "not running"
     end
 
     test "retries on console_starting and succeeds" do
@@ -176,8 +186,10 @@ defmodule Msfailab.Tools.ContainerExecutorTest do
       timing = %{initial_delay: 1, max_delay: 5, max_wait_time: 10}
       try_fn = fn -> {:error, :console_starting} end
 
-      assert {:error, :console_wait_timeout} =
+      assert {:error, {:console_timeout, message}} =
                ContainerExecutor.retry_until_ready(try_fn, timing)
+
+      assert message =~ "timeout" or message =~ "ready"
     end
 
     test "uses exponential backoff up to max_delay" do

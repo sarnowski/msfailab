@@ -75,6 +75,7 @@ defmodule Msfailab.Tools.Executor do
   @callback execute(tool_name :: String.t(), arguments :: map(), context :: context()) :: result()
 
   @executors [
+    Msfailab.Tools.SkillsExecutor,
     Msfailab.Tools.MemoryExecutor,
     Msfailab.Tools.MsfDataExecutor,
     Msfailab.Tools.ContainerExecutor

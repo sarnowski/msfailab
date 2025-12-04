@@ -83,4 +83,26 @@ defmodule Msfailab.Tracks.TrackServer.Turn.ErrorFormatter do
   """
   @spec format_tool_error(term()) :: String.t()
   def format_tool_error(reason), do: inspect(reason)
+
+  @doc """
+  Unified error formatter for the new {:type, message} error format.
+
+  Extracts the human-readable message from structured errors.
+
+  ## Examples
+
+      iex> ErrorFormatter.format({:missing_parameter, "Missing required parameter: command"})
+      "Missing required parameter: command"
+
+      iex> ErrorFormatter.format("Already a string")
+      "Already a string"
+
+      iex> ErrorFormatter.format(:unknown)
+      ":unknown"
+
+  """
+  @spec format(term()) :: String.t()
+  def format({_type, message}) when is_binary(message), do: message
+  def format(message) when is_binary(message), do: message
+  def format(reason), do: inspect(reason)
 end

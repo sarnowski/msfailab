@@ -1167,7 +1167,7 @@ defmodule MsfailabWeb.WorkspaceComponents do
         <% @entry.tool_status in [:error, :timeout] -> %>
           <div>
             <div class="text-xs text-error mb-1">Error:</div>
-            <pre class="text-xs bg-error/10 border border-error/30 rounded p-2 overflow-x-auto max-h-32 overflow-y-auto text-error">{@entry.result_content || "An error occurred"}</pre>
+            <pre class="text-xs bg-error/10 border border-error/30 rounded p-2 overflow-x-auto max-h-32 overflow-y-auto text-error">{@entry.error_message || "An error occurred"}</pre>
           </div>
         <% @result_json -> %>
           <div>

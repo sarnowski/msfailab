@@ -97,8 +97,10 @@ defmodule Msfailab.Tools.MemoryExecutorTest do
     end
 
     test "returns error for invalid track_id" do
-      {:error, :track_not_found} =
+      {:error, {:track_not_found, message}} =
         MemoryExecutor.execute("read_memory", %{}, %{track_id: 999_999})
+
+      assert message =~ "Track not found"
     end
   end
 
@@ -174,9 +176,10 @@ defmodule Msfailab.Tools.MemoryExecutorTest do
     test "returns error when content is missing" do
       track = create_track_with_memory()
 
-      {:error, reason} = MemoryExecutor.execute("add_task", %{}, %{track_id: track.id})
+      {:error, {:missing_parameter, message}} =
+        MemoryExecutor.execute("add_task", %{}, %{track_id: track.id})
 
-      assert reason =~ "content"
+      assert message =~ "content"
     end
   end
 
@@ -248,19 +251,19 @@ defmodule Msfailab.Tools.MemoryExecutorTest do
     test "returns error for missing id" do
       track = create_track_with_memory()
 
-      {:error, reason} =
+      {:error, {:missing_parameter, message}} =
         MemoryExecutor.execute("update_task", %{"status" => "completed"}, %{track_id: track.id})
 
-      assert reason =~ "id"
+      assert message =~ "id"
     end
 
     test "returns error for unknown task id" do
       track = create_track_with_memory()
 
-      {:error, reason} =
+      {:error, {:task_not_found, message}} =
         MemoryExecutor.execute("update_task", %{"id" => "unknown"}, %{track_id: track.id})
 
-      assert reason =~ "not found"
+      assert message =~ "not found"
     end
   end
 
@@ -280,9 +283,10 @@ defmodule Msfailab.Tools.MemoryExecutorTest do
     test "returns error when id is missing" do
       track = create_track_with_memory()
 
-      {:error, reason} = MemoryExecutor.execute("remove_task", %{}, %{track_id: track.id})
+      {:error, {:missing_parameter, message}} =
+        MemoryExecutor.execute("remove_task", %{}, %{track_id: track.id})
 
-      assert reason =~ "id"
+      assert message =~ "id"
     end
 
     test "handles non-existent task id gracefully" do

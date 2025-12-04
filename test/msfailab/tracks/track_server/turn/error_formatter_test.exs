@@ -84,4 +84,26 @@ defmodule Msfailab.Tracks.TrackServer.Turn.ErrorFormatterTest do
       assert ErrorFormatter.format_tool_error(:some_error) == ":some_error"
     end
   end
+
+  describe "format/1" do
+    test "extracts message from {:type, message} tuple" do
+      assert ErrorFormatter.format({:missing_parameter, "Missing required parameter: command"}) ==
+               "Missing required parameter: command"
+
+      assert ErrorFormatter.format({:not_found, "Skill not found: debugging"}) ==
+               "Skill not found: debugging"
+
+      assert ErrorFormatter.format({:workspace_not_found, "Workspace not found"}) ==
+               "Workspace not found"
+    end
+
+    test "passes through binary errors unchanged" do
+      assert ErrorFormatter.format("Custom error message") == "Custom error message"
+    end
+
+    test "formats unknown errors with inspect" do
+      assert ErrorFormatter.format(:some_atom) == ":some_atom"
+      assert ErrorFormatter.format({:complex, :tuple, 123}) == "{:complex, :tuple, 123}"
+    end
+  end
 end

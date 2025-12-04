@@ -683,7 +683,7 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
 
       {:error, reason} ->
         duration = DateTime.diff(DateTime.utc_now(), started_at, :millisecond)
-        error_message = ErrorFormatter.format_msf_data_error(reason)
+        error_message = ErrorFormatter.format(reason)
 
         # coveralls-ignore-next-line
         Logger.warning("MSF data tool failed: #{tool_state.tool_name} - #{error_message}")
@@ -747,7 +747,7 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
 
       {:error, reason} ->
         duration = DateTime.diff(DateTime.utc_now(), started_at, :millisecond)
-        error_message = ErrorFormatter.format_memory_error(reason)
+        error_message = ErrorFormatter.format(reason)
 
         # coveralls-ignore-next-line
         Logger.warning("Memory tool failed: #{tool_state.tool_name} - #{error_message}")

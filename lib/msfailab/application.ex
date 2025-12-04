@@ -24,6 +24,7 @@ defmodule Msfailab.Application do
         {DNSCluster, query: Application.get_env(:msfailab, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: Msfailab.PubSub}
       ] ++
+        skills_children() ++
         llm_children() ++
         container_children() ++
         [
@@ -35,6 +36,16 @@ defmodule Msfailab.Application do
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: Msfailab.Supervisor]
     Supervisor.start_link(children, opts)
+  end
+
+  # Returns skills-related children for the supervision tree.
+  # In test mode, these are not started - tests manage their own registry.
+  defp skills_children do
+    if Application.get_env(:msfailab, :start_skills, true) do
+      [Msfailab.Skills.Registry]
+    else
+      []
+    end
   end
 
   # Returns LLM-related children for the supervision tree.

@@ -74,52 +74,72 @@ defmodule Msfailab.Tools.MsfDataExecutor do
 
   def execute("list_hosts", args, %{workspace_slug: workspace_slug}) do
     filters = extract_filters(args, [:address, :os, :state, :search, :limit])
-    MsfData.list_hosts(workspace_slug, filters)
+    wrap_msf_error(MsfData.list_hosts(workspace_slug, filters), workspace_slug)
   end
 
   def execute("list_services", args, %{workspace_slug: workspace_slug}) do
     filters = extract_filters(args, [:host, :port, :proto, :state, :name, :search, :limit])
-    MsfData.list_services(workspace_slug, filters)
+    wrap_msf_error(MsfData.list_services(workspace_slug, filters), workspace_slug)
   end
 
   def execute("list_vulns", args, %{workspace_slug: workspace_slug}) do
     filters = extract_filters(args, [:host, :service_port, :name, :search, :exploited, :limit])
-    MsfData.list_vulns(workspace_slug, filters)
+    wrap_msf_error(MsfData.list_vulns(workspace_slug, filters), workspace_slug)
   end
 
   def execute("list_creds", args, %{workspace_slug: workspace_slug}) do
     filters = extract_filters(args, [:host, :service_port, :service_name, :user, :ptype, :limit])
-    MsfData.list_creds(workspace_slug, filters)
+    wrap_msf_error(MsfData.list_creds(workspace_slug, filters), workspace_slug)
   end
 
   def execute("list_loots", args, %{workspace_slug: workspace_slug}) do
     filters = extract_filters(args, [:host, :ltype, :search, :limit])
-    MsfData.list_loots(workspace_slug, filters)
+    wrap_msf_error(MsfData.list_loots(workspace_slug, filters), workspace_slug)
   end
 
   def execute("list_notes", args, %{workspace_slug: workspace_slug}) do
     filters = extract_filters(args, [:host, :ntype, :critical, :search, :limit])
-    MsfData.list_notes(workspace_slug, filters)
+    wrap_msf_error(MsfData.list_notes(workspace_slug, filters), workspace_slug)
   end
 
   def execute("list_sessions", args, %{workspace_slug: workspace_slug}) do
     filters = extract_filters(args, [:host, :stype, :active, :limit])
-    MsfData.list_sessions(workspace_slug, filters)
+    wrap_msf_error(MsfData.list_sessions(workspace_slug, filters), workspace_slug)
   end
 
   def execute("retrieve_loot", args, %{workspace_slug: workspace_slug}) do
     loot_id = args["loot_id"]
     max_size = args["max_size"] || 10_000
-    MsfData.get_loot_content(workspace_slug, loot_id, max_size)
+
+    case MsfData.get_loot_content(workspace_slug, loot_id, max_size) do
+      {:ok, result} ->
+        {:ok, result}
+
+      {:error, :loot_not_found} ->
+        {:error, {:loot_not_found, "Loot not found: #{loot_id}"}}
+
+      {:error, :workspace_not_found} ->
+        {:error, {:workspace_not_found, "Workspace not found: #{workspace_slug}"}}
+    end
   end
 
   def execute("read_note", %{"note_id" => note_id}, %{workspace_slug: workspace_slug}) do
     rpc_context = get_rpc_context_for_workspace(workspace_slug)
-    MsfData.get_note(workspace_slug, note_id, rpc_context)
+
+    case MsfData.get_note(workspace_slug, note_id, rpc_context) do
+      {:ok, result} ->
+        {:ok, result}
+
+      {:error, :not_found} ->
+        {:error, {:note_not_found, "Note not found: #{note_id}"}}
+
+      {:error, :workspace_not_found} ->
+        {:error, {:workspace_not_found, "Workspace not found: #{workspace_slug}"}}
+    end
   end
 
   def execute("read_note", _args, _context) do
-    {:error, :missing_note_id}
+    {:error, {:missing_parameter, "Missing required parameter: note_id"}}
   end
 
   def execute("create_note", args, %{workspace_slug: workspace_slug}) do
@@ -145,13 +165,16 @@ defmodule Msfailab.Tools.MsfDataExecutor do
       {:error, %Ecto.Changeset{} = changeset} ->
         {:error, {:validation_error, format_changeset_errors(changeset)}}
 
+      {:error, :workspace_not_found} ->
+        {:error, {:workspace_not_found, "Workspace not found: #{workspace_slug}"}}
+
       {:error, reason} ->
         {:error, reason}
     end
   end
 
   def execute(unknown_tool, _args, _context) do
-    {:error, {:unknown_tool, unknown_tool}}
+    {:error, {:unknown_tool, "Unknown tool: #{unknown_tool}"}}
   end
 
   # ============================================================================
@@ -168,6 +191,12 @@ defmodule Msfailab.Tools.MsfDataExecutor do
   rescue
     # If key doesn't exist as atom, skip it
     ArgumentError -> %{}
+  end
+
+  defp wrap_msf_error({:ok, result}, _workspace_slug), do: {:ok, result}
+
+  defp wrap_msf_error({:error, :workspace_not_found}, workspace_slug) do
+    {:error, {:workspace_not_found, "Workspace not found: #{workspace_slug}"}}
   end
 
   defp format_changeset_errors(changeset) do

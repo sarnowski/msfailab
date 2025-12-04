@@ -713,6 +713,32 @@ defmodule Msfailab.Tools do
       approval_required: false,
       timeout: 5_000,
       mutex: :memory
+    },
+    # =========================================================================
+    # Skills Tools - Learning specialized capabilities
+    # =========================================================================
+    %Tool{
+      name: "learn_skill",
+      short_title: "Learning skill",
+      description:
+        "Learn a skill from the skill library. Skills teach you specialized knowledge " <>
+          "and procedures for specific tasks. Check the skill library overview in your " <>
+          "context to see available skills and their descriptions.",
+      parameters: %{
+        "type" => "object",
+        "properties" => %{
+          "skill_name" => %{
+            "type" => "string",
+            "description" => "The name of the skill to learn (from the skill library overview)"
+          }
+        },
+        "required" => ["skill_name"],
+        "additionalProperties" => false
+      },
+      strict: true,
+      cacheable: true,
+      approval_required: false,
+      timeout: 5_000
     }
   ]
 
@@ -723,9 +749,9 @@ defmodule Msfailab.Tools do
 
       iex> tools = Msfailab.Tools.list_tools()
       iex> length(tools)
-      17
+      18
       iex> Enum.map(tools, & &1.name) |> Enum.sort()
-      ["add_task", "create_note", "execute_bash_command", "execute_msfconsole_command", "list_creds", "list_hosts", "list_loots", "list_notes", "list_services", "list_sessions", "list_vulns", "read_memory", "read_note", "remove_task", "retrieve_loot", "update_memory", "update_task"]
+      ["add_task", "create_note", "execute_bash_command", "execute_msfconsole_command", "learn_skill", "list_creds", "list_hosts", "list_loots", "list_notes", "list_services", "list_sessions", "list_vulns", "read_memory", "read_note", "remove_task", "retrieve_loot", "update_memory", "update_task"]
   """
   @spec list_tools() :: [Tool.t()]
   def list_tools, do: @tools
