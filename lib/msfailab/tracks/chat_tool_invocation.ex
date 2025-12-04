@@ -83,7 +83,7 @@ defmodule Msfailab.Tracks.ChatToolInvocation do
        "tool_calls": [{
          "id": "call_abc123",
          "type": "function",
-         "function": {"name": "msf_command", "arguments": "{\"command\": \"nmap -sV 10.0.0.1\"}"}
+         "function": {"name": "execute_msfconsole_command", "arguments": "{\"command\": \"nmap -sV 10.0.0.1\"}"}
        }]
      }
      ```
@@ -110,7 +110,7 @@ defmodule Msfailab.Tracks.ChatToolInvocation do
     |> ChatToolInvocation.changeset(%{
       entry_id: entry.id,
       tool_call_id: "call_abc123",
-      tool_name: "msf_command",
+      tool_name: "execute_msfconsole_command",
       arguments: %{"command" => "nmap -sV 10.0.0.1"}
     })
     |> Repo.insert()
@@ -187,7 +187,7 @@ defmodule Msfailab.Tracks.ChatToolInvocation do
 
   - `entry_id` - The entry this invocation belongs to (1:1 relationship)
   - `tool_call_id` - Provider-assigned ID for correlating call and result
-  - `tool_name` - The tool being invoked (e.g., "msf_command", "bash_command")
+  - `tool_name` - The tool being invoked (e.g., "execute_msfconsole_command", "execute_bash_command")
 
   ## Optional Fields
 

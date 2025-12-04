@@ -737,7 +737,7 @@ defmodule Msfailab.Tracks.TrackServerTest do
 
       # 2. Create a turn and TWO tool invocations in DB:
       # - update_memory: approval_required=false, should show as :approved
-      # - bash_command: approval_required=true, should show as :pending
+      # - execute_bash_command: approval_required=true, should show as :pending
       {:ok, turn} = ChatContext.create_turn(track.id, "gpt-4o")
 
       {:ok, _entry1} =
@@ -751,7 +751,7 @@ defmodule Msfailab.Tracks.TrackServerTest do
       {:ok, _entry2} =
         ChatContext.create_tool_invocation_entry(track.id, turn.id, nil, 2, %{
           tool_call_id: "call_needs_approval_456",
-          tool_name: "bash_command",
+          tool_name: "execute_bash_command",
           arguments: %{"command" => "echo test"},
           console_prompt: "msf6 > "
         })
@@ -776,20 +776,20 @@ defmodule Msfailab.Tracks.TrackServerTest do
       bash_tool =
         Enum.find(
           chat_state.entries,
-          &(&1.entry_type == :tool_invocation and &1.tool_name == "bash_command")
+          &(&1.entry_type == :tool_invocation and &1.tool_name == "execute_bash_command")
         )
 
       assert memory_tool != nil, "Expected to find update_memory entry"
-      assert bash_tool != nil, "Expected to find bash_command entry"
+      assert bash_tool != nil, "Expected to find execute_bash_command entry"
 
       # The key assertions:
       # update_memory: should be :approved or :success (auto-approved, may have executed)
-      # bash_command: should be :pending (requires approval)
+      # execute_bash_command: should be :pending (requires approval)
       assert memory_tool.tool_status in [:approved, :success],
              "update_memory should be :approved or :success but got #{inspect(memory_tool.tool_status)}"
 
       assert bash_tool.tool_status == :pending,
-             "bash_command should be :pending but got #{inspect(bash_tool.tool_status)}"
+             "execute_bash_command should be :pending but got #{inspect(bash_tool.tool_status)}"
     end
   end
 

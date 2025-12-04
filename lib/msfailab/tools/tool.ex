@@ -30,7 +30,7 @@ defmodule Msfailab.Tools.Tool do
 
   | Field | Type | Description |
   |-------|------|-------------|
-  | `name` | `String.t()` | Unique identifier for the tool (e.g., `"msf_command"`) |
+  | `name` | `String.t()` | Unique identifier for the tool (e.g., `"execute_msfconsole_command"`) |
   | `description` | `String.t()` | Human-readable description for the LLM |
   | `parameters` | `map()` | JSON Schema defining the tool's input parameters |
   | `short_title` | `String.t()` | Human-readable short title for UI display (e.g., `"Running MSF command"`) |
@@ -83,9 +83,9 @@ defmodule Msfailab.Tools.Tool do
 
   | Mutex | Tools | Rationale |
   |-------|-------|-----------|
-  | `:msf_console` | `msf_command` | Metasploit console is single-threaded |
+  | `:msf_console` | `execute_msfconsole_command` | Metasploit console is single-threaded |
   | `:memory` | `read_memory`, `update_memory`, `add_task`, `update_task`, `remove_task` | Must accumulate changes sequentially |
-  | `nil` | `bash_command`, `list_*`, `retrieve_loot`, `create_note` | True parallel execution |
+  | `nil` | `execute_bash_command`, `list_*`, `retrieve_loot`, `create_note` | True parallel execution |
 
   The ExecutionManager handles the scheduling based on mutex groups.
   See `Msfailab.Tools.ExecutionManager` for execution details.

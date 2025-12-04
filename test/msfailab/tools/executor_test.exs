@@ -63,8 +63,8 @@ defmodule Msfailab.Tools.ExecutorTest do
     end
 
     test "ContainerExecutor handles container tools" do
-      assert ContainerExecutor.handles_tool?("msf_command")
-      assert ContainerExecutor.handles_tool?("bash_command")
+      assert ContainerExecutor.handles_tool?("execute_msfconsole_command")
+      assert ContainerExecutor.handles_tool?("execute_bash_command")
     end
 
     test "executors don't handle unrelated tools" do

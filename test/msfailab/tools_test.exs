@@ -29,11 +29,11 @@ defmodule Msfailab.ToolsTest do
       assert Enum.all?(tools, &match?(%Tool{}, &1))
     end
 
-    test "includes msf_command tool" do
+    test "includes execute_msfconsole_command tool" do
       tools = Tools.list_tools()
       names = Enum.map(tools, & &1.name)
 
-      assert "msf_command" in names
+      assert "execute_msfconsole_command" in names
     end
 
     test "all tools have required fields" do
@@ -62,9 +62,9 @@ defmodule Msfailab.ToolsTest do
   end
 
   describe "get_tool/1" do
-    test "returns msf_command tool" do
-      assert {:ok, tool} = Tools.get_tool("msf_command")
-      assert tool.name == "msf_command"
+    test "returns execute_msfconsole_command tool" do
+      assert {:ok, tool} = Tools.get_tool("execute_msfconsole_command")
+      assert tool.name == "execute_msfconsole_command"
       assert tool.strict == true
       assert tool.cacheable == true
       assert tool.approval_required == true
@@ -80,9 +80,9 @@ defmodule Msfailab.ToolsTest do
     end
   end
 
-  describe "msf_command tool" do
+  describe "execute_msfconsole_command tool" do
     setup do
-      {:ok, tool} = Tools.get_tool("msf_command")
+      {:ok, tool} = Tools.get_tool("execute_msfconsole_command")
       %{tool: tool}
     end
 
@@ -199,13 +199,13 @@ defmodule Msfailab.ToolsTest do
   end
 
   describe "mutex assignments" do
-    test "msf_command has mutex :msf_console" do
-      {:ok, tool} = Tools.get_tool("msf_command")
+    test "execute_msfconsole_command has mutex :msf_console" do
+      {:ok, tool} = Tools.get_tool("execute_msfconsole_command")
       assert tool.mutex == :msf_console
     end
 
-    test "bash_command has mutex nil (true parallel)" do
-      {:ok, tool} = Tools.get_tool("bash_command")
+    test "execute_bash_command has mutex nil (true parallel)" do
+      {:ok, tool} = Tools.get_tool("execute_bash_command")
       assert tool.mutex == nil
     end
 

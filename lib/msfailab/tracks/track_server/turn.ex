@@ -552,7 +552,7 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
           {TurnState.t(), [ChatEntry.t()], [action()]}
   def start_tool_execution(%TurnState{} = turn, entries, entry_id, context) do
     case Map.get(turn.tool_invocations, entry_id) do
-      %{tool_name: "msf_command", arguments: args} = tool_state ->
+      %{tool_name: "execute_msfconsole_command", arguments: args} = tool_state ->
         command = Map.get(args, "command", "")
 
         new_tool_state = %{
@@ -577,7 +577,7 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
 
         {new_turn, new_entries, actions}
 
-      %{tool_name: "bash_command", arguments: args} = tool_state ->
+      %{tool_name: "execute_bash_command", arguments: args} = tool_state ->
         command = Map.get(args, "command", "")
 
         new_tool_state = %{

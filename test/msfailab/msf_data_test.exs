@@ -17,9 +17,14 @@
 defmodule Msfailab.MsfDataTest do
   use Msfailab.DataCase, async: true
 
+  import Mox
+
+  alias Msfailab.Containers.Msgrpc.ClientMock, as: MsgrpcClientMock
   alias Msfailab.MsfData
   alias Msfailab.MsfData.{Cred, Host, Loot, MsfWorkspace, Note, Service, Session, Vuln}
   alias Msfailab.Repo
+
+  setup :verify_on_exit!
 
   # ============================================================================
   # Test Helpers
@@ -815,11 +820,11 @@ defmodule Msfailab.MsfDataTest do
       assert result.id == host.id
       assert result.address == "10.0.0.5"
       assert result.name == "testhost"
-      assert result.services_count == 1
-      assert result.vulns_count == 1
-      assert result.notes_count == 1
-      assert result.sessions_count == 1
-      assert result.loots_count == 1
+      assert length(result.related_services) == 1
+      assert length(result.related_vulns) == 1
+      assert length(result.related_notes) == 1
+      assert length(result.related_sessions) == 1
+      assert length(result.related_loots) == 1
     end
 
     test "returns error for non-existent host" do
@@ -853,9 +858,9 @@ defmodule Msfailab.MsfDataTest do
       assert result.host_address == "10.0.0.5"
       assert result.host_name == "testhost"
       assert result.host_os == "Linux"
-      assert result.vulns_count == 1
-      assert result.creds_count == 1
-      assert result.notes_count == 1
+      assert length(result.related_vulns) == 1
+      assert length(result.related_creds) == 1
+      assert length(result.related_notes) == 1
     end
 
     test "returns error for non-existent service" do
@@ -941,6 +946,219 @@ defmodule Msfailab.MsfDataTest do
       workspace = create_msf_workspace()
 
       assert {:error, :not_found} == MsfData.get_note(workspace.name, 99_999)
+    end
+
+    test "returns is_serialized: true when data is Ruby Marshal encoded" do
+      workspace = create_msf_workspace()
+      # Real Marshal data: {:time => "Thu Nov 27 07:24:03 2025"}
+      marshal_data = "BAh7BjoJdGltZSIdVGh1IE5vdiAyNyAwNzoyNDowMyAyMDI1"
+      note = create_note(workspace, %{ntype: "host.last_boot", data: marshal_data})
+
+      {:ok, result} = MsfData.get_note(workspace.name, note.id)
+
+      assert result.is_serialized == true
+      assert result.data == marshal_data
+    end
+
+    test "returns is_serialized: false when data is plain text" do
+      workspace = create_msf_workspace()
+      note = create_note(workspace, %{ntype: "agent.observation", data: "Plain text note"})
+
+      {:ok, result} = MsfData.get_note(workspace.name, note.id)
+
+      assert result.is_serialized == false
+      assert result.data == "Plain text note"
+    end
+  end
+
+  # ============================================================================
+  # get_note/3 with RPC deserialization
+  # ============================================================================
+
+  describe "get_note/3 with RPC context" do
+    setup do
+      workspace = create_msf_workspace()
+      host = create_host(workspace, %{address: "10.0.0.5"})
+      {:ok, workspace: workspace, host: host}
+    end
+
+    test "deserializes Marshal data via RPC when context provided", %{
+      workspace: workspace,
+      host: host
+    } do
+      marshal_data = "BAh7BjoJdGltZSIdVGh1IE5vdiAyNyAwNzoyNDowMyAyMDI1"
+
+      note =
+        create_note(workspace, %{ntype: "host.last_boot", data: marshal_data, host_id: host.id})
+
+      # Mock RPC client
+      rpc_context = %{
+        client: MsgrpcClientMock,
+        endpoint: %{host: "localhost", port: 55_553},
+        token: "test-token"
+      }
+
+      # Expect RPC call to db.notes and return deserialized data
+      # Note: RPC uses "type" instead of "ntype" and doesn't include an "id" field
+      expect(MsgrpcClientMock, :call, fn endpoint, token, "db.notes", [opts] ->
+        assert endpoint == %{host: "localhost", port: 55_553}
+        assert token == "test-token"
+        assert opts["workspace"] == workspace.name
+
+        {:ok,
+         %{
+           "notes" => [
+             %{
+               "type" => "host.last_boot",
+               "data" => %{"time" => "Thu Nov 27 07:24:03 2025"},
+               "host" => "10.0.0.5"
+             }
+           ]
+         }}
+      end)
+
+      {:ok, result} = MsfData.get_note(workspace.name, note.id, rpc_context)
+
+      assert result.data == %{"time" => "Thu Nov 27 07:24:03 2025"}
+      assert result.deserialization_error == nil
+      assert result.is_serialized == true
+    end
+
+    test "returns raw data with deserialization_error when RPC fails", %{workspace: workspace} do
+      marshal_data = "BAh7BjoJdGltZSIdVGh1IE5vdiAyNyAwNzoyNDowMyAyMDI1"
+      note = create_note(workspace, %{ntype: "host.last_boot", data: marshal_data})
+
+      rpc_context = %{
+        client: MsgrpcClientMock,
+        endpoint: %{host: "localhost", port: 55_553},
+        token: "test-token"
+      }
+
+      # RPC call fails
+      expect(MsgrpcClientMock, :call, fn _endpoint, _token, "db.notes", _opts ->
+        {:error, :connection_refused}
+      end)
+
+      {:ok, result} = MsfData.get_note(workspace.name, note.id, rpc_context)
+
+      # Returns raw data with error
+      assert result.data == marshal_data
+      assert result.deserialization_error =~ "connection_refused"
+      assert result.is_serialized == true
+    end
+
+    test "does not call RPC for plain text data", %{workspace: workspace} do
+      note = create_note(workspace, %{ntype: "agent.observation", data: "Plain text"})
+
+      rpc_context = %{
+        client: MsgrpcClientMock,
+        endpoint: %{host: "localhost", port: 55_553},
+        token: "test-token"
+      }
+
+      # No RPC call expected - Mox will fail if call is made
+      {:ok, result} = MsfData.get_note(workspace.name, note.id, rpc_context)
+
+      assert result.data == "Plain text"
+      assert result.is_serialized == false
+      refute Map.has_key?(result, :deserialization_error)
+    end
+
+    test "returns raw data when note not found in RPC response", %{
+      workspace: workspace,
+      host: host
+    } do
+      marshal_data = "BAh7BjoJdGltZSIdVGh1IE5vdiAyNyAwNzoyNDowMyAyMDI1"
+
+      note =
+        create_note(workspace, %{ntype: "host.last_boot", data: marshal_data, host_id: host.id})
+
+      rpc_context = %{
+        client: MsgrpcClientMock,
+        endpoint: %{host: "localhost", port: 55_553},
+        token: "test-token"
+      }
+
+      # RPC returns notes but none match our type/host combination
+      expect(MsgrpcClientMock, :call, fn _endpoint, _token, "db.notes", _opts ->
+        {:ok,
+         %{
+           "notes" => [
+             %{"type" => "other.type", "host" => "10.0.0.5", "data" => "something"}
+           ]
+         }}
+      end)
+
+      {:ok, result} = MsfData.get_note(workspace.name, note.id, rpc_context)
+
+      assert result.data == marshal_data
+      assert result.deserialization_error =~ "not found"
+      assert result.is_serialized == true
+    end
+
+    test "handles RPC error response with error_message", %{workspace: workspace} do
+      marshal_data = "BAh7BjoJdGltZSIdVGh1IE5vdiAyNyAwNzoyNDowMyAyMDI1"
+      note = create_note(workspace, %{ntype: "host.last_boot", data: marshal_data})
+
+      rpc_context = %{
+        client: MsgrpcClientMock,
+        endpoint: %{host: "localhost", port: 55_553},
+        token: "invalid-token"
+      }
+
+      # RPC returns error response (as {:ok, %{"error" => true, ...}})
+      expect(MsgrpcClientMock, :call, fn _endpoint, _token, "db.notes", _opts ->
+        {:ok,
+         %{
+           "error" => true,
+           "error_code" => 401,
+           "error_message" => "Invalid Authentication Token"
+         }}
+      end)
+
+      {:ok, result} = MsfData.get_note(workspace.name, note.id, rpc_context)
+
+      assert result.data == marshal_data
+      assert result.deserialization_error =~ "Invalid Authentication Token"
+      assert result.is_serialized == true
+    end
+
+    test "matches note by type and host since RPC doesn't return IDs", %{
+      workspace: workspace,
+      host: host
+    } do
+      marshal_data = "BAh7BjoJdGltZSIdVGh1IE5vdiAyNyAwNzoyNDowMyAyMDI1"
+
+      note =
+        create_note(workspace, %{ntype: "host.last_boot", data: marshal_data, host_id: host.id})
+
+      rpc_context = %{
+        client: MsgrpcClientMock,
+        endpoint: %{host: "localhost", port: 55_553},
+        token: "test-token"
+      }
+
+      # RPC returns multiple notes - we should match by type and host
+      expect(MsgrpcClientMock, :call, fn _endpoint, _token, "db.notes", _opts ->
+        {:ok,
+         %{
+           "notes" => [
+             %{"type" => "other.note", "host" => "10.0.0.5", "data" => "wrong"},
+             %{
+               "type" => "host.last_boot",
+               "host" => "10.0.0.5",
+               "data" => %{"time" => "Thu Nov 27 07:24:03 2025"}
+             },
+             %{"type" => "host.last_boot", "host" => "10.0.0.99", "data" => "wrong host"}
+           ]
+         }}
+      end)
+
+      {:ok, result} = MsfData.get_note(workspace.name, note.id, rpc_context)
+
+      # Should match by type=host.last_boot and host=10.0.0.5
+      assert result.data == %{"time" => "Thu Nov 27 07:24:03 2025"}
+      assert result.deserialization_error == nil
     end
   end
 
@@ -1040,6 +1258,51 @@ defmodule Msfailab.MsfDataTest do
       workspace = create_msf_workspace()
 
       assert {:error, :not_found} == MsfData.get_session(workspace.name, 99_999)
+    end
+  end
+
+  # ============================================================================
+  # is_marshaled_data?/1
+  # ============================================================================
+
+  describe "marshaled_data?/1" do
+    test "returns true for base64-encoded Ruby Marshal hash" do
+      # Real Marshal data: {:time => "Thu Nov 27 07:24:03 2025"}
+      # Decodes to: <<0x04, 0x08, 0x7B, ...>> (Marshal v4.8 + Hash)
+      marshal_data = "BAh7BjoJdGltZSIdVGh1IE5vdiAyNyAwNzoyNDowMyAyMDI1"
+
+      assert MsfData.marshaled_data?(marshal_data)
+    end
+
+    test "returns false for plain text" do
+      refute MsfData.marshaled_data?("Just some plain text")
+      refute MsfData.marshaled_data?("Test note content")
+    end
+
+    test "returns false for nil" do
+      refute MsfData.marshaled_data?(nil)
+    end
+
+    test "returns false for empty string" do
+      refute MsfData.marshaled_data?("")
+    end
+
+    test "returns false for invalid base64" do
+      refute MsfData.marshaled_data?("not-valid-base64!!!")
+    end
+
+    test "returns false for valid base64 that is not Marshal data" do
+      # "Hello World" in base64
+      refute MsfData.marshaled_data?("SGVsbG8gV29ybGQ=")
+    end
+
+    test "returns true when data has trailing whitespace (common in DB values)" do
+      # Metasploit often stores data with trailing newlines
+      marshal_data_with_newline = "BAh7BjoJdGltZSIdVGh1IE5vdiAyNyAwNzoyNDowMyAyMDI1\n"
+      marshal_data_with_spaces = "BAh7BjoJdGltZSIdVGh1IE5vdiAyNyAwNzoyNDowMyAyMDI1  \n"
+
+      assert MsfData.marshaled_data?(marshal_data_with_newline)
+      assert MsfData.marshaled_data?(marshal_data_with_spaces)
     end
   end
 

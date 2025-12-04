@@ -20,12 +20,12 @@ defmodule Msfailab.Tools.ContainerExecutorTest do
   alias Msfailab.Tools.ContainerExecutor
 
   describe "handles_tool?/1" do
-    test "returns true for msf_command" do
-      assert ContainerExecutor.handles_tool?("msf_command")
+    test "returns true for execute_msfconsole_command" do
+      assert ContainerExecutor.handles_tool?("execute_msfconsole_command")
     end
 
-    test "returns true for bash_command" do
-      assert ContainerExecutor.handles_tool?("bash_command")
+    test "returns true for execute_bash_command" do
+      assert ContainerExecutor.handles_tool?("execute_bash_command")
     end
 
     test "returns false for other tools" do
@@ -36,35 +36,39 @@ defmodule Msfailab.Tools.ContainerExecutorTest do
     end
   end
 
-  describe "execute/3 - msf_command argument validation" do
+  describe "execute/3 - execute_msfconsole_command argument validation" do
     test "returns error for missing command parameter" do
       context = %{container_id: 1, track_id: 1}
 
       assert {:error, "Missing required parameter: command"} =
-               ContainerExecutor.execute("msf_command", %{}, context)
+               ContainerExecutor.execute("execute_msfconsole_command", %{}, context)
     end
 
     test "returns error when command key has wrong name" do
       context = %{container_id: 1, track_id: 1}
 
       assert {:error, "Missing required parameter: command"} =
-               ContainerExecutor.execute("msf_command", %{"cmd" => "help"}, context)
+               ContainerExecutor.execute(
+                 "execute_msfconsole_command",
+                 %{"cmd" => "help"},
+                 context
+               )
     end
   end
 
-  describe "execute/3 - bash_command argument validation" do
+  describe "execute/3 - execute_bash_command argument validation" do
     test "returns error for missing command parameter" do
       context = %{container_id: 1, track_id: 1}
 
       assert {:error, "Missing required parameter: command"} =
-               ContainerExecutor.execute("bash_command", %{}, context)
+               ContainerExecutor.execute("execute_bash_command", %{}, context)
     end
 
     test "returns error when command key has wrong name" do
       context = %{container_id: 1, track_id: 1}
 
       assert {:error, "Missing required parameter: command"} =
-               ContainerExecutor.execute("bash_command", %{"cmd" => "ls"}, context)
+               ContainerExecutor.execute("execute_bash_command", %{"cmd" => "ls"}, context)
     end
   end
 

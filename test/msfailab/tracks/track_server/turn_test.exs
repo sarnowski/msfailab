@@ -104,7 +104,7 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
 
   describe "reconcile/4 - pending approvals" do
     test "transitions to pending_approval when pending tools exist" do
-      tool_inv = make_tool_invocation("call_1", "msf_command", :pending)
+      tool_inv = make_tool_invocation("call_1", "execute_msfconsole_command", :pending)
 
       turn = make_turn(status: :streaming, tool_invocations: %{1 => tool_inv})
       console = make_console()
@@ -117,7 +117,7 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
     end
 
     test "returns no_action when already in pending_approval" do
-      tool_inv = make_tool_invocation("call_1", "msf_command", :pending)
+      tool_inv = make_tool_invocation("call_1", "execute_msfconsole_command", :pending)
 
       turn = make_turn(status: :pending_approval, tool_invocations: %{1 => tool_inv})
       console = make_console()
@@ -130,11 +130,14 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
   describe "reconcile/4 - tool execution" do
     test "executes next sequential tool when console ready" do
       tool_inv =
-        make_tool_invocation("call_1", "msf_command", :approved,
+        make_tool_invocation("call_1", "execute_msfconsole_command", :approved,
           arguments: %{"command" => "help"}
         )
 
-      entry = make_tool_entry(1, 1, "msf_command", :approved, arguments: %{"command" => "help"})
+      entry =
+        make_tool_entry(1, 1, "execute_msfconsole_command", :approved,
+          arguments: %{"command" => "help"}
+        )
 
       turn = make_turn(status: :executing_tools, tool_invocations: %{1 => tool_inv})
       console = make_console(status: :ready)
@@ -148,21 +151,24 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
       assert {:send_msf_command, "help"} in actions
     end
 
-    test "executes all parallel tools (bash_command) at once" do
+    test "executes all parallel tools (execute_bash_command) at once" do
       tool_inv1 =
-        make_tool_invocation("call_1", "bash_command", :approved,
+        make_tool_invocation("call_1", "execute_bash_command", :approved,
           arguments: %{"command" => "ls -la"}
         )
 
       tool_inv2 =
-        make_tool_invocation("call_2", "bash_command", :approved,
+        make_tool_invocation("call_2", "execute_bash_command", :approved,
           arguments: %{"command" => "pwd"}
         )
 
       entry1 =
-        make_tool_entry(1, 1, "bash_command", :approved, arguments: %{"command" => "ls -la"})
+        make_tool_entry(1, 1, "execute_bash_command", :approved,
+          arguments: %{"command" => "ls -la"}
+        )
 
-      entry2 = make_tool_entry(2, 2, "bash_command", :approved, arguments: %{"command" => "pwd"})
+      entry2 =
+        make_tool_entry(2, 2, "execute_bash_command", :approved, arguments: %{"command" => "pwd"})
 
       turn =
         make_turn(
@@ -189,17 +195,19 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
     test "executes parallel tools even when sequential tools exist" do
       # When we have a mix of parallel and sequential tools,
       # parallel tools can run while console is busy with sequential
-      sequential = make_tool_invocation("call_1", "msf_command", :executing)
+      sequential = make_tool_invocation("call_1", "execute_msfconsole_command", :executing)
 
       parallel =
-        make_tool_invocation("call_2", "bash_command", :approved,
+        make_tool_invocation("call_2", "execute_bash_command", :approved,
           arguments: %{"command" => "echo hi"}
         )
 
-      entry1 = make_tool_entry(1, 1, "msf_command", :executing)
+      entry1 = make_tool_entry(1, 1, "execute_msfconsole_command", :executing)
 
       entry2 =
-        make_tool_entry(2, 2, "bash_command", :approved, arguments: %{"command" => "echo hi"})
+        make_tool_entry(2, 2, "execute_bash_command", :approved,
+          arguments: %{"command" => "echo hi"}
+        )
 
       turn =
         make_turn(status: :executing_tools, tool_invocations: %{1 => sequential, 2 => parallel})
@@ -304,8 +312,8 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
 
   describe "approve_tool/3" do
     test "approves pending tool" do
-      tool_inv = make_tool_invocation("call_1", "msf_command", :pending)
-      entry = make_tool_entry(1, 1, "msf_command", :pending)
+      tool_inv = make_tool_invocation("call_1", "execute_msfconsole_command", :pending)
+      entry = make_tool_entry(1, 1, "execute_msfconsole_command", :pending)
 
       turn = make_turn(status: :pending_approval, tool_invocations: %{1 => tool_inv})
 
@@ -324,7 +332,7 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
     end
 
     test "returns error for non-pending tool" do
-      tool_inv = make_tool_invocation("call_1", "msf_command", :approved)
+      tool_inv = make_tool_invocation("call_1", "execute_msfconsole_command", :approved)
 
       turn = make_turn(tool_invocations: %{1 => tool_inv})
 
@@ -334,8 +342,8 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
 
   describe "deny_tool/4" do
     test "denies pending tool" do
-      tool_inv = make_tool_invocation("call_1", "msf_command", :pending)
-      entry = make_tool_entry(1, 1, "msf_command", :pending)
+      tool_inv = make_tool_invocation("call_1", "execute_msfconsole_command", :pending)
+      entry = make_tool_entry(1, 1, "execute_msfconsole_command", :pending)
 
       turn = make_turn(status: :pending_approval, tool_invocations: %{1 => tool_inv})
 
@@ -354,7 +362,7 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
     end
 
     test "returns error for non-pending tool" do
-      tool_inv = make_tool_invocation("call_1", "msf_command", :executing)
+      tool_inv = make_tool_invocation("call_1", "execute_msfconsole_command", :executing)
 
       turn = make_turn(tool_invocations: %{1 => tool_inv})
 
@@ -369,13 +377,16 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
   describe "start_tool_execution/4" do
     @context %{workspace_slug: "test-workspace"}
 
-    test "starts execution for msf_command tool" do
+    test "starts execution for execute_msfconsole_command tool" do
       tool_inv =
-        make_tool_invocation("call_1", "msf_command", :approved,
+        make_tool_invocation("call_1", "execute_msfconsole_command", :approved,
           arguments: %{"command" => "help"}
         )
 
-      entry = make_tool_entry(1, 1, "msf_command", :approved, arguments: %{"command" => "help"})
+      entry =
+        make_tool_entry(1, 1, "execute_msfconsole_command", :approved,
+          arguments: %{"command" => "help"}
+        )
 
       turn = make_turn(status: :executing_tools, tool_invocations: %{1 => tool_inv})
 
@@ -389,8 +400,10 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
     end
 
     test "handles missing command argument" do
-      tool_inv = make_tool_invocation("call_1", "msf_command", :approved, arguments: %{})
-      entry = make_tool_entry(1, 1, "msf_command", :approved, arguments: %{})
+      tool_inv =
+        make_tool_invocation("call_1", "execute_msfconsole_command", :approved, arguments: %{})
+
+      entry = make_tool_entry(1, 1, "execute_msfconsole_command", :approved, arguments: %{})
 
       turn = make_turn(status: :executing_tools, tool_invocations: %{1 => tool_inv})
 
@@ -433,12 +446,12 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
       started_at = DateTime.add(DateTime.utc_now(), -1, :second)
 
       tool_inv =
-        make_tool_invocation("call_1", "msf_command", :executing,
+        make_tool_invocation("call_1", "execute_msfconsole_command", :executing,
           command_id: "cmd-1",
           started_at: started_at
         )
 
-      entry = make_tool_entry(1, 1, "msf_command", :executing)
+      entry = make_tool_entry(1, 1, "execute_msfconsole_command", :executing)
 
       turn =
         make_turn(
@@ -477,12 +490,12 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
       started_at = DateTime.add(DateTime.utc_now(), -1, :second)
 
       tool_inv =
-        make_tool_invocation("call_1", "bash_command", :executing,
+        make_tool_invocation("call_1", "execute_bash_command", :executing,
           command_id: "bash-cmd-1",
           started_at: started_at
         )
 
-      entry = make_tool_entry(1, 1, "bash_command", :executing)
+      entry = make_tool_entry(1, 1, "execute_bash_command", :executing)
 
       turn =
         make_turn(
@@ -522,12 +535,12 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
       started_at = DateTime.add(DateTime.utc_now(), -1, :second)
 
       tool_inv =
-        make_tool_invocation("call_1", "bash_command", :executing,
+        make_tool_invocation("call_1", "execute_bash_command", :executing,
           command_id: "bash-cmd-1",
           started_at: started_at
         )
 
-      entry = make_tool_entry(1, 1, "bash_command", :executing)
+      entry = make_tool_entry(1, 1, "execute_bash_command", :executing)
 
       turn =
         make_turn(
@@ -552,12 +565,12 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
     test "handles nil started_at gracefully" do
       # Test the nil started_at branch
       tool_inv =
-        make_tool_invocation("call_1", "bash_command", :executing,
+        make_tool_invocation("call_1", "execute_bash_command", :executing,
           command_id: "bash-cmd-1",
           started_at: nil
         )
 
-      entry = make_tool_entry(1, 1, "bash_command", :executing)
+      entry = make_tool_entry(1, 1, "execute_bash_command", :executing)
 
       turn =
         make_turn(
@@ -587,7 +600,7 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
 
   describe "record_command_id/3" do
     test "records command_id for existing tool" do
-      tool_inv = make_tool_invocation("call_1", "msf_command", :executing)
+      tool_inv = make_tool_invocation("call_1", "execute_msfconsole_command", :executing)
 
       turn = make_turn(tool_invocations: %{1 => tool_inv})
 
@@ -608,8 +621,8 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
 
   describe "mark_tool_error/4" do
     test "marks tool as error" do
-      tool_inv = make_tool_invocation("call_1", "msf_command", :executing)
-      entry = make_tool_entry(1, 1, "msf_command", :executing)
+      tool_inv = make_tool_invocation("call_1", "execute_msfconsole_command", :executing)
+      entry = make_tool_entry(1, 1, "execute_msfconsole_command", :executing)
 
       turn = make_turn(tool_invocations: %{1 => tool_inv})
 
@@ -647,7 +660,7 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
 
       tool_call = %LLMEvents.ToolCall{
         id: "call_abc",
-        name: "msf_command",
+        name: "execute_msfconsole_command",
         arguments: %{"command" => "search apache"}
       }
 
@@ -664,7 +677,7 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
       assert [entry] = new_entries
       assert entry.entry_type == :tool_invocation
       assert entry.tool_status == :pending
-      assert entry.tool_name == "msf_command"
+      assert entry.tool_name == "execute_msfconsole_command"
       assert entry.console_prompt == "msf6 >"
 
       assert {:persist_tool_invocation, 42, "turn-123", 1, attrs} = Enum.at(actions, 0)
@@ -678,7 +691,7 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
 
       tool_call = %LLMEvents.ToolCall{
         id: "call_abc",
-        name: "msf_command",
+        name: "execute_msfconsole_command",
         arguments: %{}
       }
 
@@ -814,7 +827,7 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
 
   describe "reconcile/4 - LLM continuation" do
     test "starts next LLM request when all tools are terminal" do
-      tool_inv = make_tool_invocation("call_1", "msf_command", :success)
+      tool_inv = make_tool_invocation("call_1", "execute_msfconsole_command", :success)
 
       turn =
         make_turn(
@@ -837,7 +850,7 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
     test "preserves chat entries when starting next LLM request" do
       # Regression test: start_llm_request was returning [] for entries,
       # which wiped out state.chat_entries when reconciling after tool completion
-      tool_inv = make_tool_invocation("call_1", "msf_command", :success)
+      tool_inv = make_tool_invocation("call_1", "execute_msfconsole_command", :success)
 
       turn =
         make_turn(
@@ -854,7 +867,7 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
       existing_entries = [
         ChatEntry.user_prompt("entry-1", 1, "Hello!", DateTime.utc_now()),
         ChatEntry.assistant_response("entry-2", 2, "Hi there", DateTime.utc_now()),
-        make_tool_entry(3, 3, "msf_command", :success)
+        make_tool_entry(3, 3, "execute_msfconsole_command", :success)
       ]
 
       {_new_turn, returned_entries, _actions} =
@@ -910,7 +923,7 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
         )
 
       bash_inv =
-        make_tool_invocation("call_2", "bash_command", :pending,
+        make_tool_invocation("call_2", "execute_bash_command", :pending,
           arguments: %{"command" => "nmap 192.168.1.1"}
         )
 
@@ -932,7 +945,7 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
           tool_call_id: "call_1",
           arguments: %{"objective" => "Find the router"}
         ),
-        make_tool_entry(2, 2, "bash_command", :pending,
+        make_tool_entry(2, 2, "execute_bash_command", :pending,
           tool_call_id: "call_2",
           arguments: %{"command" => "nmap 192.168.1.1"}
         )
@@ -966,7 +979,7 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
 
     test "executes approved parallel tools even when other tools are pending approval" do
       # Set up: update_memory is approved (doesn't need approval)
-      #         bash_command is pending (needs approval)
+      #         execute_bash_command is pending (needs approval)
 
       track = create_track_for_memory_test()
 
@@ -976,7 +989,7 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
         )
 
       bash_inv =
-        make_tool_invocation("call_2", "bash_command", :pending,
+        make_tool_invocation("call_2", "execute_bash_command", :pending,
           arguments: %{"command" => "nmap 192.168.1.1"}
         )
 
@@ -997,7 +1010,7 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
           tool_call_id: "call_1",
           arguments: %{"objective" => "Find the router"}
         ),
-        make_tool_entry(2, 2, "bash_command", :pending,
+        make_tool_entry(2, 2, "execute_bash_command", :pending,
           tool_call_id: "call_2",
           arguments: %{"command" => "nmap 192.168.1.1"}
         )
@@ -1009,7 +1022,7 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
         autonomous: false
       }
 
-      # The approved update_memory should execute even though bash_command is pending
+      # The approved update_memory should execute even though execute_bash_command is pending
       result = Turn.reconcile(turn, console, entries, context)
 
       # Should return updated turn (memory tool executed synchronously)

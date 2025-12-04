@@ -925,7 +925,7 @@ defmodule MsfailabWeb.WorkspaceComponents do
   # are used.
   #
   # Rendering Modes:
-  #   1. **Custom Rendering** (msf_command, bash_command):
+  #   1. **Custom Rendering** (execute_msfconsole_command, execute_bash_command):
   #      - Tool defines render_collapsed/1, render_expanded/1, render_approval_subject/1
   #      - These functions are called to render the tool UI
   #
@@ -1011,8 +1011,8 @@ defmodule MsfailabWeb.WorkspaceComponents do
     # Check if tool has custom rendering functions
     has_custom_collapsed = assigns.tool && assigns.tool.render_collapsed
     has_custom_expanded = assigns.tool && assigns.tool.render_expanded
-    # bash_command defaults to expanded view
-    default_expanded = assigns.entry.tool_name == "bash_command"
+    # execute_bash_command defaults to expanded view
+    default_expanded = assigns.entry.tool_name == "execute_bash_command"
 
     assigns =
       assigns
@@ -1401,8 +1401,8 @@ defmodule MsfailabWeb.WorkspaceComponents do
   end
 
   # Helper function to get display name for tools
-  defp tool_display_name("msf_command"), do: "Metasploit Command"
-  defp tool_display_name("bash_command"), do: "Bash Command"
+  defp tool_display_name("execute_msfconsole_command"), do: "Metasploit Command"
+  defp tool_display_name("execute_bash_command"), do: "Bash Command"
   defp tool_display_name("list_hosts"), do: "List Hosts"
   defp tool_display_name("list_services"), do: "List Services"
   defp tool_display_name("list_vulns"), do: "List Vulnerabilities"
@@ -1423,11 +1423,11 @@ defmodule MsfailabWeb.WorkspaceComponents do
 
   # Helper function to get prompt for a tool entry.
   # MSF commands use the dynamic console_prompt, bash commands use hardcoded "# ".
-  defp get_tool_prompt(%{tool_name: "msf_command"} = entry) do
+  defp get_tool_prompt(%{tool_name: "execute_msfconsole_command"} = entry) do
     entry.console_prompt || ""
   end
 
-  defp get_tool_prompt(%{tool_name: "bash_command"}) do
+  defp get_tool_prompt(%{tool_name: "execute_bash_command"}) do
     "# "
   end
 
@@ -1754,7 +1754,7 @@ defmodule MsfailabWeb.WorkspaceComponents do
             <.icon name="hero-circle-stack" class="size-5" />
             <span
               :if={@asset_counts.total > 0}
-              class="badge badge-primary badge-sm absolute -top-2 -right-2 min-w-5"
+              class="badge badge-primary badge-sm absolute -top-2 -left-2 min-w-5"
             >
               {format_count(@asset_counts.total)}
             </span>

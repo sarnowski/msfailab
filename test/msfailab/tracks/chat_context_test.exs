@@ -168,7 +168,7 @@ defmodule Msfailab.Tracks.ChatContextTest do
       {:ok, entry} =
         ChatContext.create_tool_invocation_entry(track.id, turn.id, nil, 1, %{
           tool_call_id: "call_123",
-          tool_name: "msf_command",
+          tool_name: "execute_msfconsole_command",
           arguments: %{"command" => "help"},
           console_prompt: "msf6 > "
         })
@@ -178,7 +178,7 @@ defmodule Msfailab.Tracks.ChatContextTest do
       assert entry.position == 1
       assert entry.entry_type == "tool_invocation"
       assert entry.tool_invocation.tool_call_id == "call_123"
-      assert entry.tool_invocation.tool_name == "msf_command"
+      assert entry.tool_invocation.tool_name == "execute_msfconsole_command"
       assert entry.tool_invocation.arguments == %{"command" => "help"}
       assert entry.tool_invocation.console_prompt == "msf6 > "
       assert entry.tool_invocation.status == "pending"
@@ -192,7 +192,7 @@ defmodule Msfailab.Tracks.ChatContextTest do
       {:ok, entry} =
         ChatContext.create_tool_invocation_entry(track.id, turn.id, nil, 1, %{
           tool_call_id: "call_123",
-          tool_name: "msf_command",
+          tool_name: "execute_msfconsole_command",
           arguments: %{}
         })
 
@@ -324,7 +324,7 @@ defmodule Msfailab.Tracks.ChatContextTest do
       {:ok, _} =
         ChatContext.create_tool_invocation_entry(track.id, turn.id, nil, 1, %{
           tool_call_id: "call_1",
-          tool_name: "msf_command",
+          tool_name: "execute_msfconsole_command",
           arguments: %{}
         })
 
@@ -362,7 +362,7 @@ defmodule Msfailab.Tracks.ChatContextTest do
       {:ok, _} =
         ChatContext.create_tool_invocation_entry(track.id, turn.id, nil, 1, %{
           tool_call_id: "call_1",
-          tool_name: "msf_command",
+          tool_name: "execute_msfconsole_command",
           arguments: %{"command" => "help"}
         })
 
@@ -372,7 +372,7 @@ defmodule Msfailab.Tracks.ChatContextTest do
       assert length(chat_entries) == 1
       [chat_entry] = chat_entries
       assert chat_entry.entry_type == :tool_invocation
-      assert chat_entry.tool_name == "msf_command"
+      assert chat_entry.tool_name == "execute_msfconsole_command"
       assert chat_entry.tool_status == :pending
     end
 
@@ -452,7 +452,7 @@ defmodule Msfailab.Tracks.ChatContextTest do
       {:ok, entry} =
         ChatContext.create_tool_invocation_entry(track.id, turn.id, nil, 1, %{
           tool_call_id: "call_1",
-          tool_name: "msf_command",
+          tool_name: "execute_msfconsole_command",
           arguments: %{"command" => "help"}
         })
 
@@ -470,7 +470,9 @@ defmodule Msfailab.Tracks.ChatContextTest do
       [call_msg, result_msg] = messages
 
       assert call_msg.role == :assistant
-      assert [%{type: :tool_call, id: "call_1", name: "msf_command"}] = call_msg.content
+
+      assert [%{type: :tool_call, id: "call_1", name: "execute_msfconsole_command"}] =
+               call_msg.content
 
       assert result_msg.role == :tool
 
@@ -490,7 +492,7 @@ defmodule Msfailab.Tracks.ChatContextTest do
       {:ok, entry} =
         ChatContext.create_tool_invocation_entry(track.id, turn.id, nil, 1, %{
           tool_call_id: "call_1",
-          tool_name: "msf_command",
+          tool_name: "execute_msfconsole_command",
           arguments: %{}
         })
 
@@ -513,7 +515,7 @@ defmodule Msfailab.Tracks.ChatContextTest do
       {:ok, entry} =
         ChatContext.create_tool_invocation_entry(track.id, turn.id, nil, 1, %{
           tool_call_id: "call_1",
-          tool_name: "msf_command",
+          tool_name: "execute_msfconsole_command",
           arguments: %{}
         })
 
@@ -535,7 +537,7 @@ defmodule Msfailab.Tracks.ChatContextTest do
       {:ok, entry} =
         ChatContext.create_tool_invocation_entry(track.id, turn.id, nil, 1, %{
           tool_call_id: "call_1",
-          tool_name: "msf_command",
+          tool_name: "execute_msfconsole_command",
           arguments: %{}
         })
 
@@ -554,7 +556,7 @@ defmodule Msfailab.Tracks.ChatContextTest do
       {:ok, _} =
         ChatContext.create_tool_invocation_entry(track.id, turn.id, nil, 1, %{
           tool_call_id: "call_1",
-          tool_name: "msf_command",
+          tool_name: "execute_msfconsole_command",
           arguments: %{}
         })
 

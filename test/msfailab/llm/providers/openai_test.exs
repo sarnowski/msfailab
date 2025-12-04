@@ -270,7 +270,7 @@ defmodule Msfailab.LLM.Providers.OpenAITest do
       stream_response =
         [
           ~s(data: {"id":"chatcmpl-123","model":"gpt-4o","choices":[{"index":0,"delta":{"role":"assistant","content":"Let me search"},"finish_reason":null}]}),
-          ~s(data: {"id":"chatcmpl-123","model":"gpt-4o","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_abc","type":"function","function":{"name":"msf_command","arguments":""}}]},"finish_reason":null}]}),
+          ~s(data: {"id":"chatcmpl-123","model":"gpt-4o","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_abc","type":"function","function":{"name":"execute_msfconsole_command","arguments":""}}]},"finish_reason":null}]}),
           ~s(data: {"id":"chatcmpl-123","model":"gpt-4o","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\"com"}}]},"finish_reason":null}]}),
           ~s(data: {"id":"chatcmpl-123","model":"gpt-4o","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"mand\\":\\"search\\"}"}}]},"finish_reason":null}]}),
           ~s(data: {"id":"chatcmpl-123","model":"gpt-4o","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":15,"completion_tokens":20}}),
@@ -292,7 +292,7 @@ defmodule Msfailab.LLM.Providers.OpenAITest do
         messages: [Message.user("Search for apache exploits")],
         tools: [
           %Tool{
-            name: "msf_command",
+            name: "execute_msfconsole_command",
             short_title: "Running MSF command",
             description: "Execute MSF command",
             parameters: %{"type" => "object", "properties" => %{}}
@@ -312,7 +312,7 @@ defmodule Msfailab.LLM.Providers.OpenAITest do
                       %Events.ToolCall{
                         index: 1,
                         id: "call_abc",
-                        name: "msf_command",
+                        name: "execute_msfconsole_command",
                         arguments: %{"command" => "search"}
                       }},
                      1000
@@ -528,7 +528,7 @@ defmodule Msfailab.LLM.Providers.OpenAITest do
           tool_call = hd(assistant_msg["tool_calls"])
           assert tool_call["id"] == "call_1"
           assert tool_call["type"] == "function"
-          assert tool_call["function"]["name"] == "msf_command"
+          assert tool_call["function"]["name"] == "execute_msfconsole_command"
           # OpenAI expects JSON string for arguments
           assert tool_call["function"]["arguments"] == ~s({"command":"search"})
 
@@ -549,7 +549,7 @@ defmodule Msfailab.LLM.Providers.OpenAITest do
               %{
                 type: :tool_call,
                 id: "call_1",
-                name: "msf_command",
+                name: "execute_msfconsole_command",
                 arguments: %{"command" => "search"}
               }
             ]
@@ -650,7 +650,7 @@ defmodule Msfailab.LLM.Providers.OpenAITest do
           assert length(parsed["tools"]) == 1
           tool = hd(parsed["tools"])
           assert tool["type"] == "function"
-          assert tool["function"]["name"] == "msf_command"
+          assert tool["function"]["name"] == "execute_msfconsole_command"
           assert tool["function"]["description"] == "Execute command"
           assert tool["function"]["parameters"]["type"] == "object"
 
@@ -665,7 +665,7 @@ defmodule Msfailab.LLM.Providers.OpenAITest do
         messages: [Message.user("Hi")],
         tools: [
           %Tool{
-            name: "msf_command",
+            name: "execute_msfconsole_command",
             short_title: "Running MSF command",
             description: "Execute command",
             parameters: %{
@@ -703,7 +703,7 @@ defmodule Msfailab.LLM.Providers.OpenAITest do
         messages: [Message.user("Hi")],
         tools: [
           %Tool{
-            name: "msf_command",
+            name: "execute_msfconsole_command",
             short_title: "Running MSF command",
             description: "Execute command",
             parameters: %{"type" => "object"},
@@ -892,7 +892,7 @@ defmodule Msfailab.LLM.Providers.OpenAITest do
           ~s(data: {"id":"chatcmpl-AKqLZ123456789","object":"chat.completion.chunk","created":1732678000,"model":"gpt-4o-2024-08-06","choices":[{"index":0,"delta":{"content":" exploits and check the current hosts."},"logprobs":null,"finish_reason":null}]}),
           "",
           # First tool call - id and name
-          ~s(data: {"id":"chatcmpl-AKqLZ123456789","object":"chat.completion.chunk","created":1732678000,"model":"gpt-4o-2024-08-06","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_abc123def456","type":"function","function":{"name":"msf_command","arguments":""}}]},"logprobs":null,"finish_reason":null}]}),
+          ~s(data: {"id":"chatcmpl-AKqLZ123456789","object":"chat.completion.chunk","created":1732678000,"model":"gpt-4o-2024-08-06","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_abc123def456","type":"function","function":{"name":"execute_msfconsole_command","arguments":""}}]},"logprobs":null,"finish_reason":null}]}),
           "",
           # First tool call - arguments chunk 1
           ~s(data: {"id":"chatcmpl-AKqLZ123456789","object":"chat.completion.chunk","created":1732678000,"model":"gpt-4o-2024-08-06","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\"com"}}]},"logprobs":null,"finish_reason":null}]}),
@@ -929,7 +929,7 @@ defmodule Msfailab.LLM.Providers.OpenAITest do
         messages: [Message.user("Search for Apache exploits and list hosts")],
         tools: [
           %Tool{
-            name: "msf_command",
+            name: "execute_msfconsole_command",
             short_title: "Running MSF command",
             description: "Execute MSF command",
             parameters: %{"type" => "object"}
@@ -971,7 +971,7 @@ defmodule Msfailab.LLM.Providers.OpenAITest do
                       %Events.ToolCall{
                         index: 1,
                         id: "call_abc123def456",
-                        name: "msf_command",
+                        name: "execute_msfconsole_command",
                         arguments: %{"command" => "search apache"}
                       }},
                      1000

@@ -250,7 +250,7 @@ Holds **combined** call + result for tool executions. One entry, one row, comple
 |--------|------|-------------|
 | `entry_id` | binary_id (PK) | Shared identity with Entry |
 | `tool_call_id` | string | Provider-assigned ID |
-| `tool_name` | string | `"msf_command"`, `"bash_command"` |
+| `tool_name` | string | `"execute_msfconsole_command"`, `"execute_bash_command"` |
 | `arguments` | map | Tool arguments |
 | `status` | string | Lifecycle status (see below) |
 | `result_content` | text | Tool output (when complete) |

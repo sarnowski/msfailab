@@ -609,6 +609,59 @@ defmodule Msfailab.ContainersTest do
   end
 
   # ============================================================================
+  # RPC Context
+  # ============================================================================
+
+  describe "get_rpc_context_for_workspace/1" do
+    setup [:create_workspace_and_container]
+
+    test "returns error when no containers are running", %{workspace: workspace} do
+      # Container exists but is not started
+      assert {:error, :no_running_container} =
+               Containers.get_rpc_context_for_workspace(workspace.id)
+    end
+
+    test "returns error when workspace has no containers" do
+      {:ok, empty_workspace} =
+        Workspaces.create_workspace(%{name: "Empty", slug: "empty-workspace"})
+
+      assert {:error, :no_running_container} =
+               Containers.get_rpc_context_for_workspace(empty_workspace.id)
+    end
+
+    test "returns RPC context from running container", %{
+      workspace: workspace,
+      container: container
+    } do
+      # Use container_with_workspace to get the preloaded association
+      container = Repo.preload(container, :workspace)
+
+      expect(DockerAdapterMock, :start_container, fn _name, _labels, _rpc_port ->
+        {:ok, "rpc_ctx_container"}
+      end)
+
+      expect(DockerAdapterMock, :get_rpc_endpoint, fn "rpc_ctx_container" ->
+        {:ok, %{host: "localhost", port: 55_553}}
+      end)
+
+      # Login succeeds - container will reach :running state
+      stub(MsgrpcClientMock, :login, fn _endpoint, _pass, _user ->
+        {:ok, "test-token-abc"}
+      end)
+
+      {:ok, _pid} = Containers.start_container(container)
+      # Wait for container to start and MSGRPC to connect
+      Process.sleep(100)
+
+      {:ok, rpc_context} = Containers.get_rpc_context_for_workspace(workspace.id)
+
+      assert rpc_context.endpoint == %{host: "localhost", port: 55_553}
+      assert rpc_context.token == "test-token-abc"
+      assert is_atom(rpc_context.client)
+    end
+  end
+
+  # ============================================================================
   # Utilities
   # ============================================================================
 

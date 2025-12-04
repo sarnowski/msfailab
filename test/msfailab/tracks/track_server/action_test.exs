@@ -200,7 +200,7 @@ defmodule Msfailab.Tracks.TrackServer.ActionTest do
 
       attrs = %{
         tool_call_id: "call_abc",
-        tool_name: "msf_command",
+        tool_name: "execute_msfconsole_command",
         arguments: %{"command" => "help"},
         console_prompt: "msf6 >",
         status: "pending"
@@ -225,7 +225,7 @@ defmodule Msfailab.Tracks.TrackServer.ActionTest do
       {:ok, entry} =
         ChatContext.create_tool_invocation_entry(ctx.track.id, nil, nil, 1, %{
           tool_call_id: "call_abc",
-          tool_name: "msf_command",
+          tool_name: "execute_msfconsole_command",
           arguments: %{"command" => "help"},
           console_prompt: "msf6 >",
           status: "pending"

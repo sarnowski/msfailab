@@ -31,7 +31,7 @@ defmodule MsfailabWeb.WorkspaceComponentsTest do
       streaming: false,
       timestamp: DateTime.utc_now(),
       tool_call_id: "call_123",
-      tool_name: "msf_command",
+      tool_name: "execute_msfconsole_command",
       tool_arguments: %{"command" => "show options"},
       tool_status: :success,
       console_prompt: "msf6 exploit(test) > ",
@@ -78,12 +78,12 @@ defmodule MsfailabWeb.WorkspaceComponentsTest do
       assert WorkspaceComponents.msf_data_tool?("create_note") == true
     end
 
-    test "returns false for msf_command" do
-      assert WorkspaceComponents.msf_data_tool?("msf_command") == false
+    test "returns false for execute_msfconsole_command" do
+      assert WorkspaceComponents.msf_data_tool?("execute_msfconsole_command") == false
     end
 
-    test "returns false for bash_command" do
-      assert WorkspaceComponents.msf_data_tool?("bash_command") == false
+    test "returns false for execute_bash_command" do
+      assert WorkspaceComponents.msf_data_tool?("execute_bash_command") == false
     end
 
     test "returns false for unknown tool" do
@@ -234,7 +234,10 @@ defmodule MsfailabWeb.WorkspaceComponentsTest do
   describe "render_bash_command_approval_subject/1" do
     test "renders bash prompt and command" do
       entry =
-        mock_tool_entry(%{tool_name: "bash_command", tool_arguments: %{"command" => "ls -la"}})
+        mock_tool_entry(%{
+          tool_name: "execute_bash_command",
+          tool_arguments: %{"command" => "ls -la"}
+        })
 
       html =
         render_component(&WorkspaceComponents.render_bash_command_approval_subject/1,
@@ -250,7 +253,7 @@ defmodule MsfailabWeb.WorkspaceComponentsTest do
     test "renders collapsed terminal view with command" do
       entry =
         mock_tool_entry(%{
-          tool_name: "bash_command",
+          tool_name: "execute_bash_command",
           tool_status: :success,
           tool_arguments: %{"command" => "pwd"}
         })
@@ -262,7 +265,7 @@ defmodule MsfailabWeb.WorkspaceComponentsTest do
     end
 
     test "renders status-appropriate icon" do
-      entry = mock_tool_entry(%{tool_name: "bash_command", tool_status: :error})
+      entry = mock_tool_entry(%{tool_name: "execute_bash_command", tool_status: :error})
 
       html = render_component(&WorkspaceComponents.render_bash_command_collapsed/1, entry: entry)
 
@@ -274,7 +277,7 @@ defmodule MsfailabWeb.WorkspaceComponentsTest do
     test "renders expanded terminal box with output" do
       entry =
         mock_tool_entry(%{
-          tool_name: "bash_command",
+          tool_name: "execute_bash_command",
           tool_status: :success,
           tool_arguments: %{"command" => "echo hello"},
           result_content: "hello"
@@ -289,7 +292,11 @@ defmodule MsfailabWeb.WorkspaceComponentsTest do
 
     test "renders cursor when executing" do
       entry =
-        mock_tool_entry(%{tool_name: "bash_command", tool_status: :executing, result_content: ""})
+        mock_tool_entry(%{
+          tool_name: "execute_bash_command",
+          tool_status: :executing,
+          result_content: ""
+        })
 
       html = render_component(&WorkspaceComponents.render_bash_command_expanded/1, entry: entry)
 

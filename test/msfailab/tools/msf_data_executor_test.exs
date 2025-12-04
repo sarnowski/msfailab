@@ -245,7 +245,7 @@ defmodule Msfailab.Tools.MsfDataExecutorTest do
   describe "handles_tool?/1" do
     test "returns true for all MSF data tools" do
       tools =
-        ~w(list_hosts list_services list_vulns list_creds list_loots list_notes list_sessions retrieve_loot create_note)
+        ~w(list_hosts list_services list_vulns list_creds list_loots list_notes list_sessions retrieve_loot read_note create_note)
 
       for tool <- tools do
         assert MsfDataExecutor.handles_tool?(tool), "Expected #{tool} to be handled"
@@ -253,8 +253,8 @@ defmodule Msfailab.Tools.MsfDataExecutorTest do
     end
 
     test "returns false for non-MSF data tools" do
-      refute MsfDataExecutor.handles_tool?("msf_command")
-      refute MsfDataExecutor.handles_tool?("bash_command")
+      refute MsfDataExecutor.handles_tool?("execute_msfconsole_command")
+      refute MsfDataExecutor.handles_tool?("execute_bash_command")
       refute MsfDataExecutor.handles_tool?("unknown_tool")
     end
   end
@@ -587,6 +587,75 @@ defmodule Msfailab.Tools.MsfDataExecutorTest do
           },
           %{workspace_slug: "nonexistent"}
         )
+    end
+  end
+
+  # ============================================================================
+  # execute/3 - read_note
+  # ============================================================================
+
+  describe "execute read_note" do
+    test "returns note with full details" do
+      workspace = create_msf_workspace("test-executor-read-note")
+      host = create_host(workspace, %{address: "10.0.0.5"})
+
+      note =
+        create_note(workspace, %{
+          ntype: "host.last_boot",
+          data: "Plain text data",
+          host_id: host.id
+        })
+
+      {:ok, result} =
+        MsfDataExecutor.execute(
+          "read_note",
+          %{"note_id" => note.id},
+          %{workspace_slug: workspace.name}
+        )
+
+      assert result.id == note.id
+      assert result.ntype == "host.last_boot"
+      assert result.data == "Plain text data"
+      assert result.host_address == "10.0.0.5"
+      assert result.is_serialized == false
+    end
+
+    test "returns error when note_id not provided" do
+      workspace = create_msf_workspace("test-executor-read-note-missing-id")
+
+      {:error, :missing_note_id} =
+        MsfDataExecutor.execute(
+          "read_note",
+          %{},
+          %{workspace_slug: workspace.name}
+        )
+    end
+
+    test "returns error for non-existent note" do
+      workspace = create_msf_workspace("test-executor-read-note-notfound")
+
+      {:error, :not_found} =
+        MsfDataExecutor.execute(
+          "read_note",
+          %{"note_id" => 99_999},
+          %{workspace_slug: workspace.name}
+        )
+    end
+
+    test "includes is_serialized true for Marshal data" do
+      workspace = create_msf_workspace("test-executor-read-note-serialized")
+      # Ruby Marshal header: \x04\x08{ (version 4.8, Hash)
+      marshal_data = Base.encode64(<<0x04, 0x08, 0x7B, 0x00>>)
+      note = create_note(workspace, %{ntype: "host.last_boot", data: marshal_data})
+
+      {:ok, result} =
+        MsfDataExecutor.execute(
+          "read_note",
+          %{"note_id" => note.id},
+          %{workspace_slug: workspace.name}
+        )
+
+      assert result.is_serialized == true
     end
   end
 

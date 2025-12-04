@@ -911,6 +911,49 @@ defmodule Msfailab.Containers do
     end
   end
 
+  @doc """
+  Gets the RPC context from any running container in a workspace.
+
+  Searches for a running container with an active MSGRPC connection and
+  returns its RPC context (client module, endpoint, and auth token).
+
+  This is useful for making RPC calls to the Metasploit Framework when you
+  don't need a specific container, such as deserializing Ruby Marshal data.
+
+  ## Parameters
+
+  - `workspace_id` - The workspace ID to search for containers
+
+  ## Returns
+
+  - `{:ok, rpc_context}` - RPC context with client, endpoint, and token
+  - `{:error, :no_running_container}` - No container with active MSGRPC connection found
+  """
+  @spec get_rpc_context_for_workspace(integer()) ::
+          {:ok, map()} | {:error, :no_running_container}
+  def get_rpc_context_for_workspace(workspace_id) do
+    workspace_id
+    |> list_containers()
+    |> Enum.find_value({:error, :no_running_container}, &try_get_container_rpc_context/1)
+  end
+
+  defp try_get_container_rpc_context(container) do
+    # Only try to get context if the container process is running
+    if Container.whereis(container.id) do
+      # Wrap in try/catch - the Container GenServer may crash or be unavailable
+      try do
+        case Container.get_rpc_context(container.id) do
+          {:ok, context} -> {:ok, context}
+          {:error, _} -> nil
+        end
+      catch
+        :exit, _ -> nil
+      end
+    else
+      nil
+    end
+  end
+
   # ============================================================================
   # Utilities
   # ============================================================================

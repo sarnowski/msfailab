@@ -64,7 +64,7 @@ defmodule Msfailab.Tracks.ChatEntry do
 
   Used for LLM tool calls. Fields used:
   - `tool_call_id` - LLM-assigned identifier for the tool call
-  - `tool_name` - Name of the tool being invoked (e.g., "msf_command")
+  - `tool_name` - Name of the tool being invoked (e.g., "execute_msfconsole_command")
   - `tool_arguments` - Map of arguments passed to the tool
   - `tool_status` - Current status in the lifecycle
 
@@ -127,7 +127,7 @@ defmodule Msfailab.Tracks.ChatEntry do
         position: 2,
         entry_type: :tool_invocation,
         tool_call_id: "call_abc123",
-        tool_name: "msf_command",
+        tool_name: "execute_msfconsole_command",
         tool_arguments: %{"command" => "search apache"},
         tool_status: :pending,
         streaming: false,
@@ -169,7 +169,7 @@ defmodule Msfailab.Tracks.ChatEntry do
   | Field | Description |
   |-------|-------------|
   | `tool_call_id` | LLM-assigned ID for correlating call/result |
-  | `tool_name` | `"msf_command"` or `"bash_command"` |
+  | `tool_name` | `"execute_msfconsole_command"` or `"execute_bash_command"` |
   | `tool_arguments` | Map of arguments passed to the tool |
   | `tool_status` | Lifecycle status (pending, approved, executing, etc.) |
   | `console_prompt` | MSF console prompt at time of invocation |
@@ -429,7 +429,7 @@ defmodule Msfailab.Tracks.ChatEntry do
   - `id` - Unique identifier (typically entry_id from the database)
   - `position` - Position in the conversation timeline
   - `tool_call_id` - LLM-assigned identifier for correlating call and result
-  - `tool_name` - Name of the tool being invoked (e.g., "msf_command")
+  - `tool_name` - Name of the tool being invoked (e.g., "execute_msfconsole_command")
   - `arguments` - Map of arguments passed to the tool
   - `status` - Current status in the lifecycle (see module docs)
 
@@ -445,7 +445,7 @@ defmodule Msfailab.Tracks.ChatEntry do
       ...>   "entry-123",
       ...>   5,
       ...>   "call_abc",
-      ...>   "msf_command",
+      ...>   "execute_msfconsole_command",
       ...>   %{"command" => "search apache"},
       ...>   :pending,
       ...>   console_prompt: "msf6 > ",
@@ -454,7 +454,7 @@ defmodule Msfailab.Tracks.ChatEntry do
       iex> entry.entry_type
       :tool_invocation
       iex> entry.tool_name
-      "msf_command"
+      "execute_msfconsole_command"
       iex> entry.tool_status
       :pending
       iex> entry.console_prompt
@@ -617,7 +617,7 @@ defmodule Msfailab.Tracks.ChatEntry do
 
   ## Example
 
-      iex> entry = ChatEntry.tool_invocation("id", 1, "call_1", "msf_command", %{}, :pending, ~U[2025-01-15 10:30:00Z])
+      iex> entry = ChatEntry.tool_invocation("id", 1, "call_1", "execute_msfconsole_command", %{}, :pending, ~U[2025-01-15 10:30:00Z])
       iex> ChatEntry.tool_invocation?(entry)
       true
   """

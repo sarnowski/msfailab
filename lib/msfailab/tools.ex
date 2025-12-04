@@ -26,8 +26,8 @@ defmodule Msfailab.Tools do
 
   | Tool | Mutex | Description |
   |------|-------|-------------|
-  | `msf_command` | `:msf_console` | Execute Metasploit Framework console commands |
-  | `bash_command` | `nil` | Execute bash commands in the research environment |
+  | `execute_msfconsole_command` | `:msf_console` | Execute Metasploit Framework console commands |
+  | `execute_bash_command` | `nil` | Execute bash commands in the research environment |
   | Memory tools | `:memory` | Agent memory operations (read, update, tasks) |
   | MSF data tools | `nil` | Database queries (list_*, retrieve_*, create_*) |
 
@@ -39,7 +39,7 @@ defmodule Msfailab.Tools do
 
   | Field | Type | Description |
   |-------|------|-------------|
-  | `name` | `String.t()` | Unique identifier for the tool (e.g., `"msf_command"`) |
+  | `name` | `String.t()` | Unique identifier for the tool (e.g., `"execute_msfconsole_command"`) |
   | `description` | `String.t()` | Human-readable description explaining what the tool does |
   | `parameters` | `map()` | JSON Schema defining the tool's input parameters |
 
@@ -59,7 +59,7 @@ defmodule Msfailab.Tools do
   multiple tool calls in a single response:
 
   - **Mutex groups** (e.g., `mutex: :msf_console`): Tools with the same mutex
-    execute sequentially in LLM-specified order. Required for `msf_command`
+    execute sequentially in LLM-specified order. Required for `execute_msfconsole_command`
     because the Metasploit console is single-threaded.
 
   - **Parallel tools** (`mutex: nil`): Execute truly in parallel. Useful for
@@ -104,7 +104,7 @@ defmodule Msfailab.Tools do
   ### Anthropic
   ```json
   {
-    "name": "msf_command",
+    "name": "execute_msfconsole_command",
     "description": "Execute a Metasploit command",
     "input_schema": { ... },
     "cache_control": {"type": "ephemeral"}
@@ -116,7 +116,7 @@ defmodule Msfailab.Tools do
   {
     "type": "function",
     "function": {
-      "name": "msf_command",
+      "name": "execute_msfconsole_command",
       "description": "Execute a Metasploit command",
       "parameters": { ... },
       "strict": true
@@ -152,8 +152,8 @@ defmodule Msfailab.Tools do
 
   @tools [
     %Tool{
-      name: "msf_command",
-      short_title: "Running MSF command",
+      name: "execute_msfconsole_command",
+      short_title: "Executing Metasploit command",
       description:
         "Execute a command in the Metasploit Framework console. " <>
           "Use this to interact with MSF for security research tasks like searching for " <>
@@ -175,15 +175,15 @@ defmodule Msfailab.Tools do
       approval_required: true,
       timeout: 60_000,
       mutex: :msf_console,
-      # Custom rendering - msf_command has its own terminal-style display
+      # Custom rendering - execute_msfconsole_command has its own terminal-style display
       render_collapsed: &MsfailabWeb.WorkspaceComponents.render_msf_command_collapsed/1,
       render_expanded: &MsfailabWeb.WorkspaceComponents.render_msf_command_expanded/1,
       render_approval_subject:
         &MsfailabWeb.WorkspaceComponents.render_msf_command_approval_subject/1
     },
     %Tool{
-      name: "bash_command",
-      short_title: "Executing bash command",
+      name: "execute_bash_command",
+      short_title: "Executing Bash command",
       description:
         "Execute a bash command in the research environment. " <>
           "Use this for file operations, network reconnaissance tools (nmap, curl, dig), " <>
@@ -204,7 +204,7 @@ defmodule Msfailab.Tools do
       cacheable: true,
       approval_required: true,
       timeout: 120_000,
-      # Custom rendering - bash_command has its own terminal-style display
+      # Custom rendering - execute_bash_command has its own terminal-style display
       render_collapsed: &MsfailabWeb.WorkspaceComponents.render_bash_command_collapsed/1,
       render_expanded: &MsfailabWeb.WorkspaceComponents.render_bash_command_expanded/1,
       render_approval_subject:
@@ -515,6 +515,30 @@ defmodule Msfailab.Tools do
       timeout: 10_000
     },
     %Tool{
+      name: "read_note",
+      short_title: "Reading note",
+      description:
+        "Read the full details of a specific note from the Metasploit database. " <>
+          "Returns complete note data including host/service associations. " <>
+          "If the note contains serialized Ruby Marshal data (e.g., host.last_boot), " <>
+          "the system will automatically attempt to deserialize it when a container is running.",
+      parameters: %{
+        "type" => "object",
+        "properties" => %{
+          "note_id" => %{
+            "type" => "integer",
+            "description" => "The note ID from list_notes results"
+          }
+        },
+        "required" => ["note_id"],
+        "additionalProperties" => false
+      },
+      strict: true,
+      cacheable: true,
+      approval_required: false,
+      timeout: 10_000
+    },
+    %Tool{
       name: "create_note",
       short_title: "Creating note",
       description:
@@ -699,9 +723,9 @@ defmodule Msfailab.Tools do
 
       iex> tools = Msfailab.Tools.list_tools()
       iex> length(tools)
-      16
+      17
       iex> Enum.map(tools, & &1.name) |> Enum.sort()
-      ["add_task", "bash_command", "create_note", "list_creds", "list_hosts", "list_loots", "list_notes", "list_services", "list_sessions", "list_vulns", "msf_command", "read_memory", "remove_task", "retrieve_loot", "update_memory", "update_task"]
+      ["add_task", "create_note", "execute_bash_command", "execute_msfconsole_command", "list_creds", "list_hosts", "list_loots", "list_notes", "list_services", "list_sessions", "list_vulns", "read_memory", "read_note", "remove_task", "retrieve_loot", "update_memory", "update_task"]
   """
   @spec list_tools() :: [Tool.t()]
   def list_tools, do: @tools
@@ -711,9 +735,9 @@ defmodule Msfailab.Tools do
 
   ## Example
 
-      iex> {:ok, tool} = Msfailab.Tools.get_tool("msf_command")
+      iex> {:ok, tool} = Msfailab.Tools.get_tool("execute_msfconsole_command")
       iex> tool.name
-      "msf_command"
+      "execute_msfconsole_command"
       iex> tool.mutex
       :msf_console
 

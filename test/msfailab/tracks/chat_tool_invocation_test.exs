@@ -54,7 +54,7 @@ defmodule Msfailab.Tracks.ChatToolInvocationTest do
       attrs = %{
         entry_id: entry.id,
         tool_call_id: "call_abc123",
-        tool_name: "msf_command"
+        tool_name: "execute_msfconsole_command"
       }
 
       changeset = ChatToolInvocation.changeset(%ChatToolInvocation{}, attrs)
@@ -65,7 +65,7 @@ defmodule Msfailab.Tracks.ChatToolInvocationTest do
       attrs = %{
         entry_id: entry.id,
         tool_call_id: "call_abc123",
-        tool_name: "msf_command",
+        tool_name: "execute_msfconsole_command",
         arguments: %{"command" => "nmap -sV 10.0.0.1"},
         status: "pending"
       }
@@ -78,7 +78,7 @@ defmodule Msfailab.Tracks.ChatToolInvocationTest do
       attrs = %{
         entry_id: entry.id,
         tool_call_id: "call_abc123",
-        tool_name: "msf_command"
+        tool_name: "execute_msfconsole_command"
       }
 
       changeset = ChatToolInvocation.changeset(%ChatToolInvocation{}, attrs)
@@ -89,7 +89,7 @@ defmodule Msfailab.Tracks.ChatToolInvocationTest do
       attrs = %{
         entry_id: entry.id,
         tool_call_id: "call_abc123",
-        tool_name: "msf_command"
+        tool_name: "execute_msfconsole_command"
       }
 
       changeset = ChatToolInvocation.changeset(%ChatToolInvocation{}, attrs)
@@ -99,7 +99,7 @@ defmodule Msfailab.Tracks.ChatToolInvocationTest do
     test "invalid without entry_id" do
       attrs = %{
         tool_call_id: "call_abc123",
-        tool_name: "msf_command"
+        tool_name: "execute_msfconsole_command"
       }
 
       changeset = ChatToolInvocation.changeset(%ChatToolInvocation{}, attrs)
@@ -110,7 +110,7 @@ defmodule Msfailab.Tracks.ChatToolInvocationTest do
     test "invalid without tool_call_id", %{entry: entry} do
       attrs = %{
         entry_id: entry.id,
-        tool_name: "msf_command"
+        tool_name: "execute_msfconsole_command"
       }
 
       changeset = ChatToolInvocation.changeset(%ChatToolInvocation{}, attrs)
@@ -133,7 +133,7 @@ defmodule Msfailab.Tracks.ChatToolInvocationTest do
       attrs = %{
         entry_id: entry.id,
         tool_call_id: "call_abc123",
-        tool_name: "msf_command",
+        tool_name: "execute_msfconsole_command",
         status: "unknown_status"
       }
 
@@ -147,7 +147,7 @@ defmodule Msfailab.Tracks.ChatToolInvocationTest do
         attrs = %{
           entry_id: entry.id,
           tool_call_id: "call_abc123",
-          tool_name: "msf_command",
+          tool_name: "execute_msfconsole_command",
           status: status
         }
 
@@ -251,7 +251,7 @@ defmodule Msfailab.Tracks.ChatToolInvocationTest do
       attrs = %{
         entry_id: entry.id,
         tool_call_id: "call_abc123",
-        tool_name: "msf_command",
+        tool_name: "execute_msfconsole_command",
         arguments: %{"command" => "nmap -sV 10.0.0.1"}
       }
 
@@ -262,7 +262,7 @@ defmodule Msfailab.Tracks.ChatToolInvocationTest do
 
       assert invocation.entry_id == entry.id
       assert invocation.tool_call_id == "call_abc123"
-      assert invocation.tool_name == "msf_command"
+      assert invocation.tool_name == "execute_msfconsole_command"
       assert invocation.arguments == %{"command" => "nmap -sV 10.0.0.1"}
       assert invocation.status == "pending"
     end
@@ -273,7 +273,7 @@ defmodule Msfailab.Tracks.ChatToolInvocationTest do
         |> ChatToolInvocation.changeset(%{
           entry_id: entry.id,
           tool_call_id: "call_abc123",
-          tool_name: "bash_command",
+          tool_name: "execute_bash_command",
           arguments: %{"command" => "ls -la"}
         })
         |> Repo.insert()

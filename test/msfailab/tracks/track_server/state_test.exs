@@ -163,7 +163,7 @@ defmodule Msfailab.Tracks.TrackServer.StateTest do
       tool_invocations = %{
         1 => %{
           tool_call_id: "call_1",
-          tool_name: "msf_command",
+          tool_name: "execute_msfconsole_command",
           arguments: %{},
           status: :pending,
           command_id: nil,
@@ -182,7 +182,7 @@ defmodule Msfailab.Tracks.TrackServer.StateTest do
       tool_invocations = %{
         1 => %{
           tool_call_id: "call_1",
-          tool_name: "msf_command",
+          tool_name: "execute_msfconsole_command",
           arguments: %{},
           status: :approved,
           command_id: nil,
@@ -200,7 +200,7 @@ defmodule Msfailab.Tracks.TrackServer.StateTest do
       tool_invocations = %{
         1 => %{
           tool_call_id: "call_1",
-          tool_name: "msf_command",
+          tool_name: "execute_msfconsole_command",
           arguments: %{},
           status: :success,
           command_id: nil,
@@ -208,7 +208,7 @@ defmodule Msfailab.Tracks.TrackServer.StateTest do
         },
         2 => %{
           tool_call_id: "call_2",
-          tool_name: "msf_command",
+          tool_name: "execute_msfconsole_command",
           arguments: %{},
           status: :pending,
           command_id: nil,
@@ -264,7 +264,7 @@ defmodule Msfailab.Tracks.TrackServer.StateTest do
       tool_invocations = %{
         1 => %{
           tool_call_id: "call_1",
-          tool_name: "msf_command",
+          tool_name: "execute_msfconsole_command",
           arguments: %{},
           status: :pending,
           command_id: nil,

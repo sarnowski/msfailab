@@ -583,6 +583,20 @@ defmodule Msfailab.Containers.Container do
   end
 
   @doc """
+  Gets the full RPC context for the container, including endpoint and auth token.
+
+  Returns `{:ok, %{client: module, endpoint: map, token: string}}` if the container
+  is running and MSGRPC is connected, or `{:error, :not_available}` otherwise.
+
+  This is used for making RPC calls to the Metasploit Framework, such as
+  deserializing Ruby Marshal data in notes.
+  """
+  @spec get_rpc_context(integer()) :: {:ok, map()} | {:error, :not_available}
+  def get_rpc_context(container_record_id) do
+    GenServer.call(via_tuple(container_record_id), :get_rpc_context)
+  end
+
+  @doc """
   Notifies the Container GenServer to adopt an existing Docker container.
 
   Called by Reconciler when it discovers a running Docker container that
@@ -794,6 +808,31 @@ defmodule Msfailab.Containers.Container do
       end
 
     {:reply, result, state}
+  end
+
+  def handle_call(:get_rpc_context, _from, state) do
+    if state.status == :running && state.rpc_endpoint do
+      # Get a fresh token to avoid using an expired one
+      case msgrpc_client().login(state.rpc_endpoint, msgrpc_password(), "msf") do
+        {:ok, token} ->
+          new_state = %{state | msgrpc_token: token}
+
+          result =
+            {:ok,
+             %{
+               client: msgrpc_client(),
+               endpoint: state.rpc_endpoint,
+               token: token
+             }}
+
+          {:reply, result, new_state}
+
+        {:error, _reason} ->
+          {:reply, {:error, :not_available}, state}
+      end
+    else
+      {:reply, {:error, :not_available}, state}
+    end
   end
 
   # ---------------------------------------------------------------------------
@@ -1193,9 +1232,12 @@ defmodule Msfailab.Containers.Container do
       attempt: current_attempts + 1
     )
 
-    # Obtain fresh token for each console spawn
+    # Obtain fresh token for each console spawn (and update stored token for RPC context)
     case msgrpc_client().login(state.rpc_endpoint, msgrpc_password(), "msf") do
       {:ok, token} ->
+        # Update stored token so get_rpc_context returns a fresh token
+        state = %{state | msgrpc_token: token}
+
         opts = [
           endpoint: state.rpc_endpoint,
           token: token,

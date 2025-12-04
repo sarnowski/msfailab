@@ -34,6 +34,7 @@ defmodule Msfailab.Tools.MsfDataExecutor do
   | `list_notes` | Query research notes |
   | `list_sessions` | Query session history |
   | `retrieve_loot` | Get loot file contents |
+  | `read_note` | Get note details with automatic Marshal deserialization |
   | `create_note` | Add research note |
 
   ## Usage
@@ -48,7 +49,7 @@ defmodule Msfailab.Tools.MsfDataExecutor do
 
   alias Msfailab.MsfData
 
-  @msf_data_tools ~w(list_hosts list_services list_vulns list_creds list_loots list_notes list_sessions retrieve_loot create_note)
+  @msf_data_tools ~w(list_hosts list_services list_vulns list_creds list_loots list_notes list_sessions retrieve_loot read_note create_note)
 
   @impl true
   @spec handles_tool?(String.t()) :: boolean()
@@ -112,6 +113,15 @@ defmodule Msfailab.Tools.MsfDataExecutor do
     MsfData.get_loot_content(workspace_slug, loot_id, max_size)
   end
 
+  def execute("read_note", %{"note_id" => note_id}, %{workspace_slug: workspace_slug}) do
+    rpc_context = get_rpc_context_for_workspace(workspace_slug)
+    MsfData.get_note(workspace_slug, note_id, rpc_context)
+  end
+
+  def execute("read_note", _args, _context) do
+    {:error, :missing_note_id}
+  end
+
   def execute("create_note", args, %{workspace_slug: workspace_slug}) do
     # Map "content" argument to "data" for MsfData.create_note
     attrs = %{
@@ -168,5 +178,23 @@ defmodule Msfailab.Tools.MsfDataExecutor do
     Enum.reduce(opts, msg, fn {key, value}, acc ->
       String.replace(acc, "%{#{key}}", to_string(value))
     end)
+  end
+
+  defp get_rpc_context_for_workspace(workspace_slug) do
+    # Try to get RPC context from a running container in the workspace
+    # for deserializing Ruby Marshal data in notes
+    with {:ok, workspace} <- get_workspace_by_slug(workspace_slug),
+         {:ok, context} <- Msfailab.Containers.get_rpc_context_for_workspace(workspace.id) do
+      context
+    else
+      _ -> nil
+    end
+  end
+
+  defp get_workspace_by_slug(slug) do
+    case Msfailab.Workspaces.get_workspace_by_slug(slug) do
+      nil -> {:error, :workspace_not_found}
+      workspace -> {:ok, workspace}
+    end
   end
 end

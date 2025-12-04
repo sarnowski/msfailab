@@ -429,7 +429,11 @@ defmodule Msfailab.MsfData do
       where(
         q,
         [h],
-        ilike(h.name, ^pattern) or ilike(h.comments, ^pattern) or ilike(h.info, ^pattern)
+        ilike(fragment("?::text", h.address), ^pattern) or
+          ilike(h.name, ^pattern) or
+          ilike(h.os_name, ^pattern) or
+          ilike(h.info, ^pattern) or
+          ilike(h.comments, ^pattern)
       )
     end)
   end
@@ -485,35 +489,55 @@ defmodule Msfailab.MsfData do
           {:error, :not_found}
 
         host ->
-          # Get related counts
-          services_count =
-            from(s in Service, where: s.host_id == ^host_id, select: count(s.id))
-            |> Repo.one()
+          # Get related assets with identifying fields
+          services =
+            from(s in Service,
+              where: s.host_id == ^host_id,
+              select: %{id: s.id, port: s.port, proto: s.proto, name: s.name},
+              order_by: [asc: s.port]
+            )
+            |> Repo.all()
 
-          vulns_count =
-            from(v in Vuln, where: v.host_id == ^host_id, select: count(v.id))
-            |> Repo.one()
+          vulns =
+            from(v in Vuln,
+              where: v.host_id == ^host_id,
+              select: %{id: v.id, name: v.name},
+              order_by: [asc: v.name]
+            )
+            |> Repo.all()
 
-          notes_count =
-            from(n in Note, where: n.host_id == ^host_id, select: count(n.id))
-            |> Repo.one()
+          notes =
+            from(n in Note,
+              where: n.host_id == ^host_id,
+              select: %{id: n.id, ntype: n.ntype},
+              order_by: [asc: n.ntype]
+            )
+            |> Repo.all()
 
-          sessions_count =
-            from(s in Session, where: s.host_id == ^host_id, select: count(s.id))
-            |> Repo.one()
+          sessions =
+            from(s in Session,
+              where: s.host_id == ^host_id,
+              select: %{id: s.id, stype: s.stype, closed_at: s.closed_at},
+              order_by: [desc: s.opened_at]
+            )
+            |> Repo.all()
 
-          loots_count =
-            from(l in Loot, where: l.host_id == ^host_id, select: count(l.id))
-            |> Repo.one()
+          loots =
+            from(l in Loot,
+              where: l.host_id == ^host_id,
+              select: %{id: l.id, name: l.name, ltype: l.ltype},
+              order_by: [desc: l.created_at]
+            )
+            |> Repo.all()
 
           host_data =
             host
             |> serialize_host()
-            |> Map.put(:services_count, services_count)
-            |> Map.put(:vulns_count, vulns_count)
-            |> Map.put(:notes_count, notes_count)
-            |> Map.put(:sessions_count, sessions_count)
-            |> Map.put(:loots_count, loots_count)
+            |> Map.put(:related_services, services)
+            |> Map.put(:related_vulns, vulns)
+            |> Map.put(:related_notes, notes)
+            |> Map.put(:related_sessions, sessions)
+            |> Map.put(:related_loots, loots)
 
           {:ok, host_data}
       end
@@ -611,7 +635,7 @@ defmodule Msfailab.MsfData do
     end)
     |> maybe_filter_by(:search, filters[:search], fn q, v ->
       pattern = "%#{v}%"
-      where(q, [s, h], ilike(s.info, ^pattern))
+      where(q, [s, h], ilike(s.name, ^pattern) or ilike(s.info, ^pattern))
     end)
   end
 
@@ -672,26 +696,38 @@ defmodule Msfailab.MsfData do
           {:error, :not_found}
 
         %{service: service, host: host} ->
-          vulns_count =
-            from(v in Vuln, where: v.service_id == ^service_id, select: count(v.id))
-            |> Repo.one()
+          vulns =
+            from(v in Vuln,
+              where: v.service_id == ^service_id,
+              select: %{id: v.id, name: v.name},
+              order_by: [asc: v.name]
+            )
+            |> Repo.all()
 
-          creds_count =
-            from(c in Cred, where: c.service_id == ^service_id, select: count(c.id))
-            |> Repo.one()
+          creds =
+            from(c in Cred,
+              where: c.service_id == ^service_id,
+              select: %{id: c.id, user: c.user, ptype: c.ptype},
+              order_by: [asc: c.user]
+            )
+            |> Repo.all()
 
-          notes_count =
-            from(n in Note, where: n.service_id == ^service_id, select: count(n.id))
-            |> Repo.one()
+          notes =
+            from(n in Note,
+              where: n.service_id == ^service_id,
+              select: %{id: n.id, ntype: n.ntype},
+              order_by: [asc: n.ntype]
+            )
+            |> Repo.all()
 
           service_data =
             service
             |> serialize_service(host.address)
             |> Map.put(:host_name, host.name)
             |> Map.put(:host_os, host.os_name)
-            |> Map.put(:vulns_count, vulns_count)
-            |> Map.put(:creds_count, creds_count)
-            |> Map.put(:notes_count, notes_count)
+            |> Map.put(:related_vulns, vulns)
+            |> Map.put(:related_creds, creds)
+            |> Map.put(:related_notes, notes)
 
           {:ok, service_data}
       end
@@ -932,7 +968,7 @@ defmodule Msfailab.MsfData do
     end)
     |> maybe_filter_by(:search, filters[:search], fn q, v ->
       pattern = "%#{v}%"
-      where(q, [n, h], ilike(n.data, ^pattern))
+      where(q, [n, h], ilike(n.ntype, ^pattern) or ilike(n.data, ^pattern))
     end)
   end
 
@@ -956,6 +992,20 @@ defmodule Msfailab.MsfData do
   # Get Note
   # ============================================================================
 
+  @typedoc """
+  RPC context for deserializing Ruby Marshal data via Metasploit RPC.
+
+  Required when you want to deserialize Marshal-encoded note data:
+  - `client` - The RPC client module (e.g., `Msfailab.Containers.Msgrpc.Client.Http`)
+  - `endpoint` - The RPC endpoint map with `:host` and `:port`
+  - `token` - The RPC authentication token
+  """
+  @type rpc_context :: %{
+          client: module(),
+          endpoint: %{host: String.t(), port: pos_integer()},
+          token: String.t()
+        }
+
   @doc """
   Gets a single note by ID with host/service info.
 
@@ -963,15 +1013,32 @@ defmodule Msfailab.MsfData do
 
   - `workspace_name` - The workspace name
   - `note_id` - The note ID
+  - `rpc_context` - Optional RPC context for deserializing Ruby Marshal data
 
   ## Returns
 
-  - `{:ok, note}` - Note with host and service info
-  - `{:error, :workspace_not_found}` if workspace doesn't exist
-  - `{:error, :not_found}` if note doesn't exist
+  The returned map always includes:
+  - `:is_serialized` - Boolean indicating if data appears to be Ruby Marshal encoded
+
+  When `rpc_context` is provided and data is serialized:
+  - `:data` - Deserialized data (map) if RPC succeeds, raw string if RPC fails
+  - `:deserialization_error` - `nil` on success, error message string on failure
+
+  ## Examples
+
+      # Without RPC context - returns raw data with is_serialized flag
+      {:ok, note} = MsfData.get_note("my-workspace", 123)
+      note.is_serialized  # true if data looks like Marshal
+      note.data           # raw string
+
+      # With RPC context - attempts deserialization
+      rpc_ctx = %{client: Client, endpoint: %{host: "localhost", port: 55553}, token: "abc"}
+      {:ok, note} = MsfData.get_note("my-workspace", 123, rpc_ctx)
+      note.data                    # deserialized map on success, raw string on failure
+      note.deserialization_error   # nil on success, error message on failure
   """
-  @spec get_note(String.t(), integer()) :: {:ok, map()} | {:error, atom()}
-  def get_note(workspace_name, note_id) do
+  @spec get_note(String.t(), integer(), rpc_context() | nil) :: {:ok, map()} | {:error, atom()}
+  def get_note(workspace_name, note_id, rpc_context \\ nil) do
     with {:ok, workspace_id} <- get_msf_workspace_id(workspace_name) do
       query =
         from(n in Note,
@@ -991,22 +1058,82 @@ defmodule Msfailab.MsfData do
           note_data =
             note
             |> serialize_note(host && host.address)
-            |> Map.put(:host_name, host && host.name)
-            |> Map.put(:host_os, host && host.os_name)
-
-          note_data =
-            if service do
-              note_data
-              |> Map.put(:service_port, service.port)
-              |> Map.put(:service_proto, service.proto)
-              |> Map.put(:service_name, service.name)
-            else
-              note_data
-            end
+            |> add_host_info(host)
+            |> add_service_info(service)
+            |> add_serialization_info(note.data, workspace_name, rpc_context)
 
           {:ok, note_data}
       end
     end
+  end
+
+  defp add_host_info(note_data, nil), do: note_data
+
+  defp add_host_info(note_data, host) do
+    note_data
+    |> Map.put(:host_name, host.name)
+    |> Map.put(:host_os, host.os_name)
+  end
+
+  defp add_service_info(note_data, nil), do: note_data
+
+  defp add_service_info(note_data, service) do
+    note_data
+    |> Map.put(:service_port, service.port)
+    |> Map.put(:service_proto, service.proto)
+    |> Map.put(:service_name, service.name)
+  end
+
+  defp add_serialization_info(note_data, data, workspace_name, rpc_context) do
+    is_serialized = marshaled_data?(data)
+    note_data = Map.put(note_data, :is_serialized, is_serialized)
+
+    if is_serialized && rpc_context do
+      deserialize_note_via_rpc(note_data, workspace_name, rpc_context)
+    else
+      note_data
+    end
+  end
+
+  defp deserialize_note_via_rpc(note_data, workspace_name, rpc_context) do
+    %{client: client, endpoint: endpoint, token: token} = rpc_context
+
+    # RPC response doesn't include note IDs, so we match by type and host
+    ntype = note_data.ntype
+    host_address = note_data[:host_address]
+
+    case client.call(endpoint, token, "db.notes", [%{"workspace" => workspace_name}]) do
+      {:ok, %{"notes" => notes}} ->
+        case find_note_by_type_and_host(notes, ntype, host_address) do
+          nil ->
+            note_data
+            |> Map.put(:deserialization_error, "Note not found in RPC response")
+
+          rpc_note ->
+            note_data
+            |> Map.put(:data, rpc_note["data"])
+            |> Map.put(:deserialization_error, nil)
+        end
+
+      {:ok, %{"error" => true, "error_message" => message}} ->
+        note_data
+        |> Map.put(:deserialization_error, "RPC error: #{message}")
+
+      {:ok, %{"error" => true} = error} ->
+        note_data
+        |> Map.put(:deserialization_error, "RPC error: #{inspect(error)}")
+
+      {:error, reason} ->
+        note_data
+        |> Map.put(:deserialization_error, "RPC error: #{inspect(reason)}")
+    end
+  end
+
+  defp find_note_by_type_and_host(notes, ntype, host_address) when is_list(notes) do
+    # RPC response uses "type" for ntype and "host" for address
+    Enum.find(notes, fn note ->
+      note["type"] == ntype && note["host"] == host_address
+    end)
   end
 
   # ============================================================================
@@ -1092,6 +1219,10 @@ defmodule Msfailab.MsfData do
     end)
     |> maybe_filter_by(:ptype, filters[:ptype], fn q, v ->
       where(q, [c, s, h], c.ptype == ^v)
+    end)
+    |> maybe_filter_by(:search, filters[:search], fn q, v ->
+      pattern = "%#{v}%"
+      where(q, [c, s, h], ilike(c.user, ^pattern) or ilike(c.proof, ^pattern))
     end)
   end
 
@@ -1231,7 +1362,12 @@ defmodule Msfailab.MsfData do
     end)
     |> maybe_filter_by(:search, filters[:search], fn q, v ->
       pattern = "%#{v}%"
-      where(q, [l, h], ilike(l.name, ^pattern) or ilike(l.info, ^pattern))
+
+      where(
+        q,
+        [l, h],
+        ilike(l.name, ^pattern) or ilike(l.info, ^pattern) or ilike(l.ltype, ^pattern)
+      )
     end)
   end
 
@@ -1367,6 +1503,10 @@ defmodule Msfailab.MsfData do
       else
         where(q, [s, h], not is_nil(s.closed_at))
       end
+    end)
+    |> maybe_filter_by(:search, filters[:search], fn q, v ->
+      pattern = "%#{v}%"
+      where(q, [s, h], ilike(s.desc, ^pattern) or ilike(s.via_exploit, ^pattern))
     end)
   end
 
@@ -1529,6 +1669,41 @@ defmodule Msfailab.MsfData do
     case Repo.get_by(Service, host_id: host_id, port: service_port) do
       nil -> {:ok, nil}
       service -> {:ok, service.id}
+    end
+  end
+
+  # ============================================================================
+  # Ruby Marshal Detection
+  # ============================================================================
+
+  @doc """
+  Checks if a string appears to be base64-encoded Ruby Marshal data.
+
+  Returns true if the string decodes from base64 and starts with the Ruby Marshal
+  version header (0x04 0x08) followed by a Hash indicator (0x7B).
+
+  ## Parameters
+
+  - `data` - The string to check
+
+  ## Examples
+
+      iex> MsfData.marshaled_data?("BAh7BjoJdGltZSIdVGh1IE5vdiAyNyAwNzoyNDowMyAyMDI1")
+      true
+
+      iex> MsfData.marshaled_data?("Just plain text")
+      false
+  """
+  @spec marshaled_data?(String.t() | nil) :: boolean()
+  def marshaled_data?(nil), do: false
+  def marshaled_data?(""), do: false
+
+  def marshaled_data?(data) when is_binary(data) do
+    # Trim whitespace before decoding - DB values often have trailing newlines
+    case Base.decode64(String.trim(data)) do
+      # Ruby Marshal v4.8 header (0x04 0x08) followed by Hash (0x7B)
+      {:ok, <<0x04, 0x08, 0x7B, _rest::binary>>} -> true
+      _ -> false
     end
   end
 

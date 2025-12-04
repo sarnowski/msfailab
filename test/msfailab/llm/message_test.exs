@@ -59,7 +59,8 @@ defmodule Msfailab.LLM.MessageTest do
 
   describe "tool_call/3" do
     test "creates an assistant message with a tool call" do
-      message = Message.tool_call("call_123", "msf_command", %{"command" => "help"})
+      message =
+        Message.tool_call("call_123", "execute_msfconsole_command", %{"command" => "help"})
 
       assert message.role == :assistant
 
@@ -67,7 +68,7 @@ defmodule Msfailab.LLM.MessageTest do
                %{
                  type: :tool_call,
                  id: "call_123",
-                 name: "msf_command",
+                 name: "execute_msfconsole_command",
                  arguments: %{"command" => "help"}
                }
              ]

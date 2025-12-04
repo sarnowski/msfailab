@@ -218,7 +218,7 @@ defmodule Msfailab.LLM.Providers.Anthropic.CoreTest do
 
       chunk = """
       event: content_block_start
-      data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_123","name":"msf_command","input":{}}}
+      data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_123","name":"execute_msfconsole_command","input":{}}}
 
       event: content_block_delta
       data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"command\\""}}
@@ -235,10 +235,11 @@ defmodule Msfailab.LLM.Providers.Anthropic.CoreTest do
 
       tool_call = Enum.find(events, &match?(%Events.ToolCall{}, &1))
       assert tool_call.id == "toolu_123"
-      assert tool_call.name == "msf_command"
+      assert tool_call.name == "execute_msfconsole_command"
       assert tool_call.arguments == %{"command" => "search apache"}
 
-      assert [{:tool_use, %{id: "toolu_123", name: "msf_command"}}] = new_state.trace_blocks
+      assert [{:tool_use, %{id: "toolu_123", name: "execute_msfconsole_command"}}] =
+               new_state.trace_blocks
     end
 
     test "handles complex nested JSON arguments" do
@@ -609,7 +610,7 @@ defmodule Msfailab.LLM.Providers.Anthropic.CoreTest do
     test "transforms tools to Anthropic format with input_schema" do
       tools = [
         %Tool{
-          name: "msf_command",
+          name: "execute_msfconsole_command",
           short_title: "Running MSF command",
           description: "Execute MSF command",
           parameters: %{"type" => "object", "properties" => %{}}
@@ -618,7 +619,7 @@ defmodule Msfailab.LLM.Providers.Anthropic.CoreTest do
 
       [transformed] = Core.transform_tools(tools)
 
-      assert transformed["name"] == "msf_command"
+      assert transformed["name"] == "execute_msfconsole_command"
       assert transformed["description"] == "Execute MSF command"
       assert transformed["input_schema"]["type"] == "object"
     end

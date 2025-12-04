@@ -53,7 +53,7 @@ defmodule Msfailab.LLM do
     role: :assistant,
     content: [
       %{type: :text, text: "I'll search for that."},
-      %{type: :tool_call, id: "call_1", name: "msf_command", arguments: %{"command" => "search"}}
+      %{type: :tool_call, id: "call_1", name: "execute_msfconsole_command", arguments: %{"command" => "search"}}
     ]
   }
 
@@ -133,7 +133,7 @@ defmodule Msfailab.LLM do
   ContentDelta (index: 0, delta: "I'll search...")
   ContentBlockStop (index: 0)
   ContentBlockStart (index: 1, type: :tool_call)
-  ToolCall (index: 1, id: "call_1", name: "msf_command", arguments: %{...})
+  ToolCall (index: 1, id: "call_1", name: "execute_msfconsole_command", arguments: %{...})
   ContentBlockStop (index: 1)
   StreamComplete (stop_reason: :tool_use)
   ```

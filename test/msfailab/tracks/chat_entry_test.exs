@@ -115,7 +115,7 @@ defmodule Msfailab.Tracks.ChatEntryTest do
           123,
           5,
           "call_abc",
-          "msf_command",
+          "execute_msfconsole_command",
           %{"command" => "search apache"},
           :pending,
           console_prompt: "msf6 > ",
@@ -126,7 +126,7 @@ defmodule Msfailab.Tracks.ChatEntryTest do
       assert entry.position == 5
       assert entry.entry_type == :tool_invocation
       assert entry.tool_call_id == "call_abc"
-      assert entry.tool_name == "msf_command"
+      assert entry.tool_name == "execute_msfconsole_command"
       assert entry.tool_arguments == %{"command" => "search apache"}
       assert entry.tool_status == :pending
       assert entry.console_prompt == "msf6 > "
@@ -261,7 +261,7 @@ defmodule Msfailab.Tracks.ChatEntryTest do
         inserted_at: ~U[2025-01-15 10:30:00Z],
         tool_invocation: %Msfailab.Tracks.ChatToolInvocation{
           tool_call_id: "call_abc",
-          tool_name: "msf_command",
+          tool_name: "execute_msfconsole_command",
           arguments: %{"command" => "search apache"},
           status: "pending",
           console_prompt: "msf6 > "
@@ -276,7 +276,7 @@ defmodule Msfailab.Tracks.ChatEntryTest do
       assert chat_entry.position == 3
       assert chat_entry.entry_type == :tool_invocation
       assert chat_entry.tool_call_id == "call_abc"
-      assert chat_entry.tool_name == "msf_command"
+      assert chat_entry.tool_name == "execute_msfconsole_command"
       assert chat_entry.tool_arguments == %{"command" => "search apache"}
       assert chat_entry.tool_status == :pending
       assert chat_entry.console_prompt == "msf6 > "

@@ -46,7 +46,7 @@ defmodule Msfailab.LLM.Message do
       %{
         type: :tool_call,
         id: "call_abc123",
-        name: "msf_command",
+        name: "execute_msfconsole_command",
         arguments: %{"command" => "search type:exploit platform:windows"}
       }
 
@@ -75,7 +75,7 @@ defmodule Msfailab.LLM.Message do
         role: :assistant,
         content: [
           %{type: :text, text: "Let me search for Windows exploits."},
-          %{type: :tool_call, id: "call_1", name: "msf_command", arguments: %{"command" => "search"}}
+          %{type: :tool_call, id: "call_1", name: "execute_msfconsole_command", arguments: %{"command" => "search"}}
         ]
       }
 
@@ -151,10 +151,10 @@ defmodule Msfailab.LLM.Message do
 
   ## Example
 
-      iex> Message.tool_call("call_1", "msf_command", %{"command" => "help"})
+      iex> Message.tool_call("call_1", "execute_msfconsole_command", %{"command" => "help"})
       %Message{
         role: :assistant,
-        content: [%{type: :tool_call, id: "call_1", name: "msf_command", arguments: %{"command" => "help"}}]
+        content: [%{type: :tool_call, id: "call_1", name: "execute_msfconsole_command", arguments: %{"command" => "help"}}]
       }
   """
   @spec tool_call(String.t(), String.t(), map()) :: t()

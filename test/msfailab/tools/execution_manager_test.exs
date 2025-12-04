@@ -54,18 +54,18 @@ defmodule Msfailab.Tools.ExecutionManagerTest do
   describe "group_by_mutex/1" do
     test "groups tools with same mutex together" do
       tools = [
-        {1, %{tool_name: "msf_command", arguments: %{}}},
+        {1, %{tool_name: "execute_msfconsole_command", arguments: %{}}},
         {2, %{tool_name: "list_hosts", arguments: %{}}},
-        {3, %{tool_name: "msf_command", arguments: %{}}}
+        {3, %{tool_name: "execute_msfconsole_command", arguments: %{}}}
       ]
 
       groups = ExecutionManager.group_by_mutex(tools)
 
-      # msf_command has mutex :msf_console, list_hosts has nil mutex
+      # execute_msfconsole_command has mutex :msf_console, list_hosts has nil mutex
       assert Map.has_key?(groups, :msf_console)
       assert Map.has_key?(groups, nil)
 
-      # Two msf_commands in the :msf_console group
+      # Two execute_msfconsole_commands in the :msf_console group
       msf_group = Map.get(groups, :msf_console)
       assert length(msf_group) == 2
 
@@ -276,7 +276,7 @@ defmodule Msfailab.Tools.ExecutionManagerTest do
       # Full integration testing requires container infrastructure
 
       tools = [
-        {1, %{tool_name: "bash_command", arguments: %{"command" => "echo hello"}}}
+        {1, %{tool_name: "execute_bash_command", arguments: %{"command" => "echo hello"}}}
       ]
 
       context = %{

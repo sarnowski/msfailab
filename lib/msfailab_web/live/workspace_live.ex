@@ -655,7 +655,7 @@ defmodule MsfailabWeb.WorkspaceLive do
     asset_id = String.to_integer(id)
     workspace = socket.assigns.workspace
 
-    case fetch_asset_detail(workspace.slug, type, asset_id) do
+    case fetch_asset_detail_with_rpc(workspace, type, asset_id) do
       {:ok, asset} ->
         socket =
           socket
@@ -685,7 +685,7 @@ defmodule MsfailabWeb.WorkspaceLive do
     asset_id = String.to_integer(id)
     workspace = socket.assigns.workspace
 
-    case fetch_asset_detail(workspace.slug, type, asset_id) do
+    case fetch_asset_detail_with_rpc(workspace, type, asset_id) do
       {:ok, asset} ->
         socket =
           socket
@@ -1074,6 +1074,17 @@ defmodule MsfailabWeb.WorkspaceLive do
     end
   end
 
+  defp load_asset_counts_with_search(workspace, "") do
+    load_asset_counts(workspace)
+  end
+
+  defp load_asset_counts_with_search(workspace, search_term) do
+    case MsfData.count_assets(workspace.slug, search_term) do
+      {:ok, counts} -> counts
+      {:error, _} -> empty_asset_counts()
+    end
+  end
+
   # Shows a flash message when new assets are discovered
   defp maybe_show_database_flash(socket, changes) do
     case DatabaseUpdated.format_changes(changes) do
@@ -1121,9 +1132,13 @@ defmodule MsfailabWeb.WorkspaceLive do
 
     {assets, total_count} = fetch_assets_for_tab(workspace.slug, tab, filters)
 
+    # Update asset counts based on search term
+    asset_counts = load_asset_counts_with_search(workspace, search_term)
+
     socket
     |> assign(:database_assets, assets)
     |> assign(:database_total_count, total_count)
+    |> assign(:asset_counts, asset_counts)
   end
 
   # Fetches assets and count for the given tab
@@ -1209,4 +1224,21 @@ defmodule MsfailabWeb.WorkspaceLive do
   end
 
   defp fetch_asset_detail(_workspace_slug, _type, _id), do: {:error, :unknown_type}
+
+  # RPC-aware asset fetching for notes with Ruby Marshal data
+  defp fetch_asset_detail_with_rpc(workspace, "note", id) do
+    # Try to get RPC context for deserializing Ruby Marshal data
+    rpc_context =
+      case Containers.get_rpc_context_for_workspace(workspace.id) do
+        {:ok, ctx} -> ctx
+        {:error, _} -> nil
+      end
+
+    MsfData.get_note(workspace.slug, id, rpc_context)
+  end
+
+  defp fetch_asset_detail_with_rpc(workspace, type, id) do
+    # Other asset types don't need RPC context
+    fetch_asset_detail(workspace.slug, type, id)
+  end
 end

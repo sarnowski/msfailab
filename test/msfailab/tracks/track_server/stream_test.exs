@@ -300,7 +300,7 @@ defmodule Msfailab.Tracks.TrackServer.StreamTest do
           "tool-1",
           1,
           "call_123",
-          "msf_command",
+          "execute_msfconsole_command",
           %{"command" => "help"},
           :pending
         )

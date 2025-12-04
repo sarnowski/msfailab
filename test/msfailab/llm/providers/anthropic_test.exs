@@ -310,7 +310,7 @@ defmodule Msfailab.LLM.Providers.AnthropicTest do
           ~s(data: {"type":"content_block_stop","index":0}),
           "",
           "event: content_block_start",
-          ~s(data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_123","name":"msf_command","input":{}}}),
+          ~s(data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_123","name":"execute_msfconsole_command","input":{}}}),
           "",
           "event: content_block_delta",
           ~s(data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\\"com"}}),
@@ -343,7 +343,7 @@ defmodule Msfailab.LLM.Providers.AnthropicTest do
         messages: [Message.user("Search for apache exploits")],
         tools: [
           %Tool{
-            name: "msf_command",
+            name: "execute_msfconsole_command",
             short_title: "Running MSF command",
             description: "Execute MSF command",
             parameters: %{"type" => "object", "properties" => %{}}
@@ -363,7 +363,7 @@ defmodule Msfailab.LLM.Providers.AnthropicTest do
                       %Events.ToolCall{
                         index: 1,
                         id: "toolu_123",
-                        name: "msf_command",
+                        name: "execute_msfconsole_command",
                         arguments: %{"command" => "search"}
                       }},
                      1000
@@ -658,7 +658,7 @@ defmodule Msfailab.LLM.Providers.AnthropicTest do
 
           tool_block = Enum.find(assistant_msg["content"], &(&1["type"] == "tool_use"))
           assert tool_block["id"] == "call_1"
-          assert tool_block["name"] == "msf_command"
+          assert tool_block["name"] == "execute_msfconsole_command"
           assert tool_block["input"] == %{"command" => "search"}
 
           conn
@@ -681,7 +681,7 @@ defmodule Msfailab.LLM.Providers.AnthropicTest do
               %{
                 type: :tool_call,
                 id: "call_1",
-                name: "msf_command",
+                name: "execute_msfconsole_command",
                 arguments: %{"command" => "search"}
               }
             ]
@@ -806,7 +806,7 @@ defmodule Msfailab.LLM.Providers.AnthropicTest do
 
           assert length(parsed["tools"]) == 1
           tool = hd(parsed["tools"])
-          assert tool["name"] == "msf_command"
+          assert tool["name"] == "execute_msfconsole_command"
           assert tool["description"] == "Execute command"
           assert tool["input_schema"]["type"] == "object"
 
@@ -824,7 +824,7 @@ defmodule Msfailab.LLM.Providers.AnthropicTest do
         messages: [Message.user("Hi")],
         tools: [
           %Tool{
-            name: "msf_command",
+            name: "execute_msfconsole_command",
             short_title: "Running MSF command",
             description: "Execute command",
             parameters: %{
@@ -865,7 +865,7 @@ defmodule Msfailab.LLM.Providers.AnthropicTest do
         messages: [Message.user("Hi")],
         tools: [
           %Tool{
-            name: "msf_command",
+            name: "execute_msfconsole_command",
             short_title: "Running MSF command",
             description: "Execute command",
             parameters: %{"type" => "object"},
@@ -904,7 +904,7 @@ defmodule Msfailab.LLM.Providers.AnthropicTest do
         messages: [Message.user("Hi")],
         tools: [
           %Tool{
-            name: "msf_command",
+            name: "execute_msfconsole_command",
             short_title: "Running MSF command",
             description: "Execute command",
             parameters: %{"type" => "object"},
@@ -1205,7 +1205,7 @@ defmodule Msfailab.LLM.Providers.AnthropicTest do
           "",
           # First tool_use block start (Anthropic index 2)
           "event: content_block_start",
-          ~s(data: {"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"toolu_01ABC123DEF456","name":"msf_command","input":{}}}),
+          ~s(data: {"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"toolu_01ABC123DEF456","name":"execute_msfconsole_command","input":{}}}),
           "",
           # Tool use input deltas (streamed JSON)
           "event: content_block_delta",
@@ -1256,7 +1256,7 @@ defmodule Msfailab.LLM.Providers.AnthropicTest do
         messages: [Message.user("Search for Apache exploits and list hosts")],
         tools: [
           %Tool{
-            name: "msf_command",
+            name: "execute_msfconsole_command",
             short_title: "Running MSF command",
             description: "Execute MSF command",
             parameters: %{"type" => "object"}
@@ -1312,7 +1312,7 @@ defmodule Msfailab.LLM.Providers.AnthropicTest do
                       %Events.ToolCall{
                         index: 2,
                         id: "toolu_01ABC123DEF456",
-                        name: "msf_command",
+                        name: "execute_msfconsole_command",
                         arguments: %{"command" => "search apache"}
                       }},
                      1000

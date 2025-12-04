@@ -374,7 +374,7 @@ defmodule Msfailab.LLM.Providers.OllamaTest do
       stream_response =
         [
           ~s({"model":"llama3.1","message":{"role":"assistant","content":"Let me search"},"done":false}),
-          ~s({"model":"llama3.1","message":{"role":"assistant","content":"","tool_calls":[{"function":{"name":"msf_command","arguments":{"command":"search apache"}}}]},"done":false}),
+          ~s({"model":"llama3.1","message":{"role":"assistant","content":"","tool_calls":[{"function":{"name":"execute_msfconsole_command","arguments":{"command":"search apache"}}}]},"done":false}),
           ~s({"model":"llama3.1","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","prompt_eval_count":15,"eval_count":20}),
           ""
         ]
@@ -393,7 +393,7 @@ defmodule Msfailab.LLM.Providers.OllamaTest do
         messages: [Message.user("Search for apache exploits")],
         tools: [
           %Tool{
-            name: "msf_command",
+            name: "execute_msfconsole_command",
             short_title: "Running MSF command",
             description: "Execute MSF command",
             parameters: %{"type" => "object", "properties" => %{}}
@@ -412,7 +412,7 @@ defmodule Msfailab.LLM.Providers.OllamaTest do
       assert_receive {:llm, ^ref,
                       %Events.ToolCall{
                         index: 1,
-                        name: "msf_command",
+                        name: "execute_msfconsole_command",
                         arguments: %{"command" => "search apache"}
                       }},
                      1000
@@ -592,7 +592,7 @@ defmodule Msfailab.LLM.Providers.OllamaTest do
           assert length(assistant_msg["tool_calls"]) == 1
 
           tool_call = hd(assistant_msg["tool_calls"])
-          assert tool_call["function"]["name"] == "msf_command"
+          assert tool_call["function"]["name"] == "execute_msfconsole_command"
           assert tool_call["function"]["arguments"] == %{"command" => "search"}
 
           conn
@@ -615,7 +615,7 @@ defmodule Msfailab.LLM.Providers.OllamaTest do
               %{
                 type: :tool_call,
                 id: "call_1",
-                name: "msf_command",
+                name: "execute_msfconsole_command",
                 arguments: %{"command" => "search"}
               }
             ]
@@ -686,7 +686,7 @@ defmodule Msfailab.LLM.Providers.OllamaTest do
           assert length(parsed["tools"]) == 1
           tool = hd(parsed["tools"])
           assert tool["type"] == "function"
-          assert tool["function"]["name"] == "msf_command"
+          assert tool["function"]["name"] == "execute_msfconsole_command"
           assert tool["function"]["description"] == "Execute command"
           assert tool["function"]["parameters"]["type"] == "object"
 
@@ -704,7 +704,7 @@ defmodule Msfailab.LLM.Providers.OllamaTest do
         messages: [Message.user("Hi")],
         tools: [
           %Tool{
-            name: "msf_command",
+            name: "execute_msfconsole_command",
             short_title: "Running MSF command",
             description: "Execute command",
             parameters: %{
@@ -1061,7 +1061,7 @@ defmodule Msfailab.LLM.Providers.OllamaTest do
           ~s({"model":"qwen3:30b","created_at":"2024-01-15T10:00:02Z","message":{"role":"assistant","content":"I'll help you search for Apache"},"done":false}),
           ~s({"model":"qwen3:30b","created_at":"2024-01-15T10:00:03Z","message":{"role":"assistant","content":" exploits and check the current hosts."},"done":false}),
           # Tool calls in done=false chunk (Ollama sends these before the final chunk)
-          ~s({"model":"qwen3:30b","created_at":"2024-01-15T10:00:04Z","message":{"role":"assistant","content":"","tool_calls":[{"function":{"name":"msf_command","arguments":{"command":"search apache"}}},{"function":{"name":"list_hosts","arguments":{"workspace":"default"}}}]},"done":false}),
+          ~s({"model":"qwen3:30b","created_at":"2024-01-15T10:00:04Z","message":{"role":"assistant","content":"","tool_calls":[{"function":{"name":"execute_msfconsole_command","arguments":{"command":"search apache"}}},{"function":{"name":"list_hosts","arguments":{"workspace":"default"}}}]},"done":false}),
           # Final done=true chunk with metadata
           ~s({"model":"qwen3:30b","created_at":"2024-01-15T10:00:05Z","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","prompt_eval_count":156,"eval_count":87,"context":[1,2,3,4,5]}),
           ""
@@ -1083,7 +1083,7 @@ defmodule Msfailab.LLM.Providers.OllamaTest do
         messages: [Message.user("Search for Apache exploits and list hosts")],
         tools: [
           %Tool{
-            name: "msf_command",
+            name: "execute_msfconsole_command",
             short_title: "Running MSF command",
             description: "Execute MSF command",
             parameters: %{"type" => "object"}
@@ -1143,7 +1143,7 @@ defmodule Msfailab.LLM.Providers.OllamaTest do
       assert_receive {:llm, ^ref,
                       %Events.ToolCall{
                         index: 2,
-                        name: "msf_command",
+                        name: "execute_msfconsole_command",
                         arguments: %{"command" => "search apache"}
                       }},
                      1000

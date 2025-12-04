@@ -16,17 +16,17 @@
 
 defmodule Msfailab.Tools.ContainerExecutor do
   @moduledoc """
-  Executes container-based tools (msf_command, bash_command).
+  Executes container-based tools (execute_msfconsole_command, execute_bash_command).
 
   Unlike synchronous executors, container tools return `{:async, command_id}`
   immediately. The actual completion is signaled via events:
 
-  - `msf_command` → `ConsoleUpdated` event when console becomes ready
-  - `bash_command` → `CommandResult` event with output
+  - `execute_msfconsole_command` → `ConsoleUpdated` event when console becomes ready
+  - `execute_bash_command` → `CommandResult` event with output
 
   ## Console Readiness
 
-  For `msf_command`, the Metasploit console may not be immediately ready.
+  For `execute_msfconsole_command`, the Metasploit console may not be immediately ready.
   This executor handles waiting internally - if the console returns
   `:console_starting` or `:console_busy`, the executor will retry with
   exponential backoff until the console is ready or timeout is reached.
@@ -36,7 +36,7 @@ defmodule Msfailab.Tools.ContainerExecutor do
 
   ## Usage
 
-      case ContainerExecutor.execute("bash_command", %{"command" => "ls"}, context) do
+      case ContainerExecutor.execute("execute_bash_command", %{"command" => "ls"}, context) do
         {:async, command_id} -> # Track command_id for completion matching
         {:error, reason} -> # Handle error
       end
@@ -48,7 +48,7 @@ defmodule Msfailab.Tools.ContainerExecutor do
 
   alias Msfailab.Containers
 
-  @container_tools ~w(msf_command bash_command)
+  @container_tools ~w(execute_msfconsole_command execute_bash_command)
 
   @impl true
   @spec handles_tool?(String.t()) :: boolean()
@@ -60,7 +60,7 @@ defmodule Msfailab.Tools.ContainerExecutor do
 
   # coveralls-ignore-start
   # Reason: Container integration requiring real Docker/MSGRPC. Retry logic tested in retry_until_ready.
-  def execute("msf_command", %{"command" => command}, context) do
+  def execute("execute_msfconsole_command", %{"command" => command}, context) do
     %{container_id: container_id, track_id: track_id} = context
     timing = retry_timing()
 
@@ -69,13 +69,13 @@ defmodule Msfailab.Tools.ContainerExecutor do
 
   # coveralls-ignore-stop
 
-  def execute("msf_command", _args, _context) do
+  def execute("execute_msfconsole_command", _args, _context) do
     {:error, "Missing required parameter: command"}
   end
 
   # coveralls-ignore-start
   # Reason: Container integration requiring real Docker process.
-  def execute("bash_command", %{"command" => command}, context) do
+  def execute("execute_bash_command", %{"command" => command}, context) do
     %{container_id: container_id, track_id: track_id} = context
 
     case Containers.send_bash_command(container_id, track_id, command) do
@@ -86,7 +86,7 @@ defmodule Msfailab.Tools.ContainerExecutor do
 
   # coveralls-ignore-stop
 
-  def execute("bash_command", _args, _context) do
+  def execute("execute_bash_command", _args, _context) do
     {:error, "Missing required parameter: command"}
   end
 

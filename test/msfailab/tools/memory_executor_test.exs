@@ -62,7 +62,7 @@ defmodule Msfailab.Tools.MemoryExecutorTest do
     end
 
     test "returns false for non-memory tools" do
-      assert MemoryExecutor.handles_tool?("msf_command") == false
+      assert MemoryExecutor.handles_tool?("execute_msfconsole_command") == false
       assert MemoryExecutor.handles_tool?("list_hosts") == false
       assert MemoryExecutor.handles_tool?("unknown") == false
     end

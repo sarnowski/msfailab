@@ -167,13 +167,13 @@ defmodule Msfailab.LLM.Providers.Ollama.CoreTest do
       state = Core.init_state(%{}, "http://localhost/api/chat")
 
       chunk =
-        ~s({"model":"llama3.1","message":{"role":"assistant","content":"","tool_calls":[{"function":{"name":"msf_command","arguments":{"command":"search apache"}}}]},"done":true,"done_reason":"stop"}\n)
+        ~s({"model":"llama3.1","message":{"role":"assistant","content":"","tool_calls":[{"function":{"name":"execute_msfconsole_command","arguments":{"command":"search apache"}}}]},"done":true,"done_reason":"stop"}\n)
 
       {events, new_state} = Core.process_chunk(chunk, state)
 
       # Find the tool call event
       tool_call_event = Enum.find(events, &match?(%Events.ToolCall{}, &1))
-      assert tool_call_event.name == "msf_command"
+      assert tool_call_event.name == "execute_msfconsole_command"
       assert tool_call_event.arguments == %{"command" => "search apache"}
 
       # Verify stop reason
@@ -412,7 +412,7 @@ defmodule Msfailab.LLM.Providers.Ollama.CoreTest do
     test "transforms tools to OpenAI-compatible format" do
       tools = [
         %Tool{
-          name: "msf_command",
+          name: "execute_msfconsole_command",
           short_title: "Running MSF command",
           description: "Execute MSF command",
           parameters: %{"type" => "object", "properties" => %{}}
@@ -422,7 +422,7 @@ defmodule Msfailab.LLM.Providers.Ollama.CoreTest do
       [transformed] = Core.transform_tools(tools)
 
       assert transformed["type"] == "function"
-      assert transformed["function"]["name"] == "msf_command"
+      assert transformed["function"]["name"] == "execute_msfconsole_command"
       assert transformed["function"]["description"] == "Execute MSF command"
       assert transformed["function"]["parameters"]["type"] == "object"
     end

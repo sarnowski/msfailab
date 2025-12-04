@@ -62,7 +62,7 @@ defmodule Msfailab.Tools.ExecutionManager do
 
       tools = [
         {1, %{tool_name: "list_hosts", arguments: %{}}},
-        {2, %{tool_name: "msf_command", arguments: %{"command" => "help"}}}
+        {2, %{tool_name: "execute_msfconsole_command", arguments: %{"command" => "help"}}}
       ]
 
       context = %{
@@ -106,9 +106,9 @@ defmodule Msfailab.Tools.ExecutionManager do
 
   ## Example
 
-      iex> tools = [{1, %{tool_name: "msf_command", arguments: %{}}}]
+      iex> tools = [{1, %{tool_name: "execute_msfconsole_command", arguments: %{}}}]
       iex> ExecutionManager.group_by_mutex(tools)
-      %{msf_console: [{1, %{tool_name: "msf_command", arguments: %{}}}]}
+      %{msf_console: [{1, %{tool_name: "execute_msfconsole_command", arguments: %{}}}]}
   """
   @spec group_by_mutex([tool_entry()]) :: %{(atom() | nil) => [tool_entry()]}
   def group_by_mutex(tools) do

@@ -560,7 +560,7 @@ defmodule Msfailab.Tracks.ChatContext do
      ```elixir
      %Message{
        role: :assistant,
-       content: [%{type: :tool_call, id: "call_1", name: "msf_command", arguments: %{...}}]
+       content: [%{type: :tool_call, id: "call_1", name: "execute_msfconsole_command", arguments: %{...}}]
      }
      ```
 

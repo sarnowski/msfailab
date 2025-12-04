@@ -40,7 +40,7 @@ defmodule Msfailab.LLM.ChatRequest do
   Tools are defined using JSON Schema format:
 
       %{
-        name: "msf_command",
+        name: "execute_msfconsole_command",
         description: "Execute a command in the Metasploit console",
         parameters: %{
           type: "object",

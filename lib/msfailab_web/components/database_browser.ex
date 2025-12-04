@@ -94,85 +94,85 @@ defmodule MsfailabWeb.DatabaseBrowser do
       <div class="modal-backdrop bg-base-300/90" phx-click={@on_close} />
       <!-- Full-screen modal content -->
       <div class="fixed inset-4 bg-base-100 rounded-box border-2 border-base-300 flex flex-col overflow-hidden shadow-2xl">
-        <!-- Header -->
-        <header class="flex items-center justify-between px-6 py-4 border-b border-base-300 bg-base-200/50">
-          <div class="flex items-center gap-3">
-            <%= if @detail_asset do %>
-              <!-- Back button when viewing detail -->
+        <!-- Header with tabs -->
+        <header class="bg-base-100 border-b-2 border-base-300">
+          <nav class="flex items-center h-12 px-4">
+            <!-- Left section -->
+            <div class="flex items-center flex-1 gap-2">
+              <!-- Back button (detail view only) -->
               <button
+                :if={@detail_asset}
                 type="button"
                 class="btn btn-sm btn-ghost gap-1"
                 phx-click={@on_back}
               >
                 <.icon name="hero-arrow-left" class="size-4" /> Back
               </button>
-              <div class="divider divider-horizontal mx-0"></div>
-            <% end %>
-            <.icon name="hero-circle-stack" class="size-6 text-primary" />
-            <h2 class="text-xl font-bold">
+              <div :if={@detail_asset} class="divider divider-horizontal mx-0 h-6"></div>
+              <!-- Database icon -->
+              <.icon name="hero-circle-stack" class="size-5 text-primary" />
+              <!-- Detail title or asset tabs -->
               <%= if @detail_asset do %>
-                {asset_type_label(@detail_type)} Details
+                <h2 class="text-lg font-bold font-mono">
+                  {detail_title(@detail_type, @detail_asset)}
+                </h2>
               <% else %>
-                Asset Database
+                <div class="flex items-center gap-1">
+                  <.asset_tab
+                    :for={{type, icon, label} <- @asset_types}
+                    type={type}
+                    icon={icon}
+                    label={label}
+                    count={Map.get(@asset_counts, type, 0)}
+                    active={@active_tab == type}
+                    on_click={@on_tab_change}
+                    highlight_count={@search_term != "" && Map.get(@asset_counts, type, 0) > 0}
+                  />
+                </div>
               <% end %>
-            </h2>
-            <!-- Total count badge (only in list view) -->
-            <span :if={!@detail_asset} class="badge badge-lg badge-primary">
-              {format_number(@asset_counts.total)} total
-            </span>
-          </div>
-          <!-- Close button -->
-          <button
-            type="button"
-            class="btn btn-sm btn-circle btn-ghost"
-            phx-click={@on_close}
-            aria-label="Close"
-          >
-            <.icon name="hero-x-mark" class="size-5" />
-          </button>
-        </header>
-        <!-- Tab bar with search (only in list view) -->
-        <div
-          :if={!@detail_asset}
-          class="flex items-center justify-between px-6 py-3 border-b border-base-300 bg-base-100"
-        >
-          <!-- Asset type tabs -->
-          <div class="flex gap-1">
-            <.tab_button
-              :for={{type, icon, label} <- @asset_types}
-              type={type}
-              icon={icon}
-              label={label}
-              count={Map.get(@asset_counts, type, 0)}
-              active={@active_tab == type}
-              on_click={@on_tab_change}
-            />
-          </div>
-          <!-- Search input -->
-          <div class="flex-shrink-0 w-80">
-            <label class="input input-bordered input-sm flex items-center gap-2 bg-base-100 border-base-300 focus-within:border-primary">
-              <.icon name="hero-magnifying-glass" class="size-4 text-base-content/50" />
-              <input
-                type="text"
-                placeholder="Search all assets..."
-                class="grow bg-transparent focus:outline-none"
-                value={@search_term}
-                phx-keyup={@on_search}
-                phx-debounce="300"
-                name="search"
-              />
+            </div>
+            <!-- Right section: Search + Close button -->
+            <div class="flex items-center gap-2">
+              <!-- Search input (only in list view) -->
+              <div :if={!@detail_asset} class="flex-shrink-0 w-72">
+                <label class={[
+                  "input input-bordered input-sm flex items-center gap-2 bg-base-100",
+                  @search_term != "" && "border-primary",
+                  @search_term == "" && "border-base-300 focus-within:border-primary"
+                ]}>
+                  <.icon name="hero-magnifying-glass" class="size-4 text-base-content/50" />
+                  <input
+                    type="text"
+                    placeholder="Search all assets..."
+                    class="grow bg-transparent focus:outline-none"
+                    value={@search_term}
+                    phx-keyup={@on_search}
+                    phx-debounce="300"
+                    name="search"
+                  />
+                  <button
+                    :if={@search_term != ""}
+                    type="button"
+                    class="btn btn-ghost btn-xs btn-circle"
+                    phx-click={@on_search}
+                    phx-value-search=""
+                  >
+                    <.icon name="hero-x-mark" class="size-3" />
+                  </button>
+                </label>
+              </div>
+              <!-- Close button -->
               <button
-                :if={@search_term != ""}
                 type="button"
-                class="btn btn-ghost btn-xs btn-circle"
-                phx-click={@on_search}
-                phx-value-search=""
+                class="btn btn-sm btn-circle btn-ghost border border-base-300"
+                phx-click={@on_close}
+                aria-label="Close"
               >
-                <.icon name="hero-x-mark" class="size-3" />
+                <.icon name="hero-x-mark" class="size-5" />
               </button>
-            </label>
-          </div>
-        </div>
+            </div>
+          </nav>
+        </header>
         <!-- Content area -->
         <div class="flex-1 overflow-auto p-6">
           <%= if @detail_asset do %>
@@ -192,18 +192,56 @@ defmodule MsfailabWeb.DatabaseBrowser do
     """
   end
 
-  # Returns human-readable label for asset type
-  defp asset_type_label(:host), do: "Host"
-  defp asset_type_label(:service), do: "Service"
-  defp asset_type_label(:vuln), do: "Vulnerability"
-  defp asset_type_label(:note), do: "Note"
-  defp asset_type_label(:cred), do: "Credential"
-  defp asset_type_label(:loot), do: "Loot"
-  defp asset_type_label(:session), do: "Session"
-  defp asset_type_label(_), do: "Asset"
+  # Returns detailed title for asset detail view
+  # Host: 192.168.1.1 (hostname)
+  defp detail_title(:host, asset) do
+    base = "Host: #{asset.address}"
+    if asset.name && asset.name != "", do: "#{base} (#{asset.name})", else: base
+  end
+
+  # Service: 192.168.1.1 tcp/80 (http)
+  defp detail_title(:service, asset) do
+    base = "Service: #{asset.host_address} #{asset.proto}/#{asset.port}"
+    if asset.name && asset.name != "", do: "#{base} (#{asset.name})", else: base
+  end
+
+  # Vuln: 192.168.1.1 - CVE-2021-44228
+  defp detail_title(:vuln, asset) do
+    "Vuln: #{asset.host_address} - #{truncate(asset.name, 40)}"
+  end
+
+  # Note: 192.168.1.1 - host.os.nmap_fingerprint
+  defp detail_title(:note, asset) do
+    host = asset[:host_address] || "workspace"
+    "Note: #{host} - #{asset.ntype}"
+  end
+
+  # Cred: 192.168.1.1:22 - root
+  defp detail_title(:cred, asset) do
+    host_port = "#{asset.host_address}:#{asset.service_port}"
+    "Cred: #{host_port} - #{asset.user || "unknown"}"
+  end
+
+  # Loot: 192.168.1.1 - /etc/passwd
+  defp detail_title(:loot, asset) do
+    host = asset[:host_address] || "workspace"
+    identifier = asset.name || asset.ltype || "unknown"
+    "Loot: #{host} - #{truncate(identifier, 30)}"
+  end
+
+  # Session: 192.168.1.1 - meterpreter
+  defp detail_title(:session, asset) do
+    "Session: #{asset.host_address} - #{asset.stype}"
+  end
+
+  defp detail_title(_, _), do: "Asset Details"
+
+  defp truncate(nil, _max), do: ""
+  defp truncate(str, max) when byte_size(str) <= max, do: str
+  defp truncate(str, max), do: String.slice(str, 0, max) <> "..."
 
   @doc """
-  Renders a tab button for asset type selection.
+  Renders an asset type tab styled like the workspace header tabs.
   """
   attr :type, :atom, required: true
   attr :icon, :string, required: true
@@ -211,22 +249,30 @@ defmodule MsfailabWeb.DatabaseBrowser do
   attr :count, :integer, required: true
   attr :active, :boolean, default: false
   attr :on_click, :string, required: true
+  attr :highlight_count, :boolean, default: false
 
-  def tab_button(assigns) do
+  def asset_tab(assigns) do
     ~H"""
     <button
       type="button"
       class={[
-        "btn btn-sm gap-2",
-        @active && "btn-primary",
-        !@active && "btn-ghost"
+        "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium cursor-pointer",
+        @active && "bg-base-200 text-base-content",
+        !@active && "text-base-content/60 hover:bg-base-200/50 hover:text-base-content"
       ]}
       phx-click={@on_click}
       phx-value-tab={@type}
     >
       <.icon name={@icon} class="size-4" />
       <span class="hidden lg:inline">{@label}</span>
-      <span class="badge badge-xs">{format_number(@count)}</span>
+      <span class={[
+        "text-xs px-1.5 py-0.5 rounded",
+        @highlight_count && "bg-primary text-primary-content",
+        !@highlight_count && @active && "bg-base-300",
+        !@highlight_count && !@active && "bg-base-300/50"
+      ]}>
+        {format_number(@count)}
+      </span>
     </button>
     """
   end
@@ -909,61 +955,68 @@ defmodule MsfailabWeb.DatabaseBrowser do
           </h3>
           <div :if={@asset.info} class="mb-4">
             <div class="text-sm text-base-content/60 mb-1">Info</div>
-            <div class="font-mono text-sm bg-base-300 p-3 rounded-lg whitespace-pre-wrap">
+            <div class="font-mono text-sm bg-base-300 p-3 rounded-lg">
               {@asset.info}
             </div>
           </div>
           <div :if={@asset.comments}>
             <div class="text-sm text-base-content/60 mb-1">Comments</div>
-            <div class="text-sm bg-base-300 p-3 rounded-lg whitespace-pre-wrap">
+            <div class="text-sm bg-base-300 p-3 rounded-lg">
               {@asset.comments}
             </div>
           </div>
         </div>
       </div>
       <!-- Related assets -->
-      <div class="card bg-base-200 lg:col-span-2">
+      <div
+        :if={has_host_related_assets?(@asset)}
+        class="card bg-base-200 lg:col-span-2"
+      >
         <div class="card-body">
           <h3 class="card-title text-lg">
             <.icon name="hero-link" class="size-5" /> Related Assets
           </h3>
-          <div class="flex flex-wrap gap-2">
-            <.related_badge
-              :if={@asset[:services_count] && @asset.services_count > 0}
-              type="services"
-              count={@asset.services_count}
-              icon="hero-globe-alt"
+          <div class="space-y-2 text-sm">
+            <.related_asset_row
+              :if={@asset[:related_services] && @asset.related_services != []}
+              label="Services"
+              assets={@asset.related_services}
+              type="service"
+              format_fn={&format_service_link/1}
+              on_navigate={@on_navigate}
             />
-            <.related_badge
-              :if={@asset[:vulns_count] && @asset.vulns_count > 0}
-              type="vulns"
-              count={@asset.vulns_count}
-              icon="hero-shield-exclamation"
+            <.related_asset_row
+              :if={@asset[:related_vulns] && @asset.related_vulns != []}
+              label="Vulns"
+              assets={@asset.related_vulns}
+              type="vuln"
+              format_fn={&format_vuln_link/1}
+              on_navigate={@on_navigate}
             />
-            <.related_badge
-              :if={@asset[:notes_count] && @asset.notes_count > 0}
-              type="notes"
-              count={@asset.notes_count}
-              icon="hero-document-text"
+            <.related_asset_row
+              :if={@asset[:related_notes] && @asset.related_notes != []}
+              label="Notes"
+              assets={@asset.related_notes}
+              type="note"
+              format_fn={&format_note_link/1}
+              on_navigate={@on_navigate}
             />
-            <.related_badge
-              :if={@asset[:sessions_count] && @asset.sessions_count > 0}
-              type="sessions"
-              count={@asset.sessions_count}
-              icon="hero-command-line"
+            <.related_asset_row
+              :if={@asset[:related_sessions] && @asset.related_sessions != []}
+              label="Sessions"
+              assets={@asset.related_sessions}
+              type="session"
+              format_fn={&format_session_link/1}
+              on_navigate={@on_navigate}
             />
-            <.related_badge
-              :if={@asset[:loots_count] && @asset.loots_count > 0}
-              type="loots"
-              count={@asset.loots_count}
-              icon="hero-archive-box"
+            <.related_asset_row
+              :if={@asset[:related_loots] && @asset.related_loots != []}
+              label="Loots"
+              assets={@asset.related_loots}
+              type="loot"
+              format_fn={&format_loot_link/1}
+              on_navigate={@on_navigate}
             />
-            <span
-              :if={!has_related_assets?(@asset)}
-              class="text-base-content/50 text-sm"
-            >
-              No related assets
-            </span>
           </div>
         </div>
       </div>
@@ -1024,42 +1077,45 @@ defmodule MsfailabWeb.DatabaseBrowser do
           <h3 class="card-title text-lg">
             <.icon name="hero-information-circle" class="size-5" /> Banner / Info
           </h3>
-          <div class="font-mono text-sm bg-base-300 p-3 rounded-lg whitespace-pre-wrap">
+          <div class="font-mono text-sm bg-base-300 p-3 rounded-lg">
             {@asset.info}
           </div>
         </div>
       </div>
       <!-- Related assets -->
-      <div class="card bg-base-200 lg:col-span-2">
+      <div
+        :if={has_service_related_assets?(@asset)}
+        class="card bg-base-200 lg:col-span-2"
+      >
         <div class="card-body">
           <h3 class="card-title text-lg">
             <.icon name="hero-link" class="size-5" /> Related Assets
           </h3>
-          <div class="flex flex-wrap gap-2">
-            <.related_badge
-              :if={@asset[:vulns_count] && @asset.vulns_count > 0}
-              type="vulns"
-              count={@asset.vulns_count}
-              icon="hero-shield-exclamation"
+          <div class="space-y-2 text-sm">
+            <.related_asset_row
+              :if={@asset[:related_vulns] && @asset.related_vulns != []}
+              label="Vulns"
+              assets={@asset.related_vulns}
+              type="vuln"
+              format_fn={&format_vuln_link/1}
+              on_navigate={@on_navigate}
             />
-            <.related_badge
-              :if={@asset[:creds_count] && @asset.creds_count > 0}
-              type="creds"
-              count={@asset.creds_count}
-              icon="hero-key"
+            <.related_asset_row
+              :if={@asset[:related_creds] && @asset.related_creds != []}
+              label="Creds"
+              assets={@asset.related_creds}
+              type="cred"
+              format_fn={&format_cred_link/1}
+              on_navigate={@on_navigate}
             />
-            <.related_badge
-              :if={@asset[:notes_count] && @asset.notes_count > 0}
-              type="notes"
-              count={@asset.notes_count}
-              icon="hero-document-text"
+            <.related_asset_row
+              :if={@asset[:related_notes] && @asset.related_notes != []}
+              label="Notes"
+              assets={@asset.related_notes}
+              type="note"
+              format_fn={&format_note_link/1}
+              on_navigate={@on_navigate}
             />
-            <span
-              :if={!has_service_related?(@asset)}
-              class="text-base-content/50 text-sm"
-            >
-              No related assets
-            </span>
           </div>
         </div>
       </div>
@@ -1151,7 +1207,7 @@ defmodule MsfailabWeb.DatabaseBrowser do
           <h3 class="card-title text-lg">
             <.icon name="hero-information-circle" class="size-5" /> Details
           </h3>
-          <div class="font-mono text-sm bg-base-300 p-3 rounded-lg whitespace-pre-wrap">
+          <div class="font-mono text-sm bg-base-300 p-3 rounded-lg">
             {@asset.info}
           </div>
         </div>
@@ -1229,8 +1285,45 @@ defmodule MsfailabWeb.DatabaseBrowser do
           <h3 class="card-title text-lg">
             <.icon name="hero-document" class="size-5" /> Content
           </h3>
-          <div class="font-mono text-sm bg-base-300 p-4 rounded-lg whitespace-pre-wrap max-h-96 overflow-auto">
-            {@asset.data || "-"}
+          <div class="font-mono text-sm bg-base-300 p-4 rounded-lg max-h-96 overflow-auto">
+            {format_note_data(@asset.data)}
+          </div>
+          <!-- Successfully deserialized -->
+          <div
+            :if={
+              @asset[:is_serialized] && Map.has_key?(@asset, :deserialization_error) &&
+                !@asset[:deserialization_error]
+            }
+            class="text-xs text-base-content/50 mt-2"
+          >
+            <.icon name="hero-check-circle" class="size-4 inline" />
+            Deserialized from Ruby Marshal format
+          </div>
+          <!-- Deserialization failed -->
+          <div
+            :if={@asset[:is_serialized] && @asset[:deserialization_error]}
+            class="alert alert-warning mt-4"
+          >
+            <.icon name="hero-exclamation-triangle" class="size-5" />
+            <div>
+              <div class="font-semibold">Ruby Marshal Data</div>
+              <div class="text-sm">
+                This note contains serialized Ruby data that could not be decoded: {@asset.deserialization_error}
+              </div>
+            </div>
+          </div>
+          <!-- No container available to deserialize -->
+          <div
+            :if={@asset[:is_serialized] && !Map.has_key?(@asset, :deserialization_error)}
+            class="alert alert-info mt-4"
+          >
+            <.icon name="hero-information-circle" class="size-5" />
+            <div>
+              <div class="font-semibold">Ruby Marshal Data</div>
+              <div class="text-sm">
+                This note contains serialized Ruby data. Start a container to decode it.
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1301,7 +1394,7 @@ defmodule MsfailabWeb.DatabaseBrowser do
           <h3 class="card-title text-lg">
             <.icon name="hero-check-badge" class="size-5" /> Proof
           </h3>
-          <div class="font-mono text-sm bg-base-300 p-3 rounded-lg whitespace-pre-wrap">
+          <div class="font-mono text-sm bg-base-300 p-3 rounded-lg">
             {@asset.proof}
           </div>
         </div>
@@ -1366,7 +1459,7 @@ defmodule MsfailabWeb.DatabaseBrowser do
           <h3 class="card-title text-lg">
             <.icon name="hero-information-circle" class="size-5" /> Description
           </h3>
-          <div class="text-sm bg-base-300 p-3 rounded-lg whitespace-pre-wrap">
+          <div class="text-sm bg-base-300 p-3 rounded-lg">
             {@asset.info}
           </div>
         </div>
@@ -1377,7 +1470,7 @@ defmodule MsfailabWeb.DatabaseBrowser do
           <h3 class="card-title text-lg">
             <.icon name="hero-document" class="size-5" /> Content Preview
           </h3>
-          <div class="font-mono text-xs bg-base-300 p-4 rounded-lg whitespace-pre-wrap max-h-96 overflow-auto">
+          <div class="font-mono text-xs bg-base-300 p-4 rounded-lg max-h-96 overflow-auto">
             {truncate_text(@asset.data, 5000)}
           </div>
         </div>
@@ -1454,7 +1547,7 @@ defmodule MsfailabWeb.DatabaseBrowser do
           <h3 class="card-title text-lg">
             <.icon name="hero-information-circle" class="size-5" /> Description
           </h3>
-          <div class="text-sm bg-base-300 p-3 rounded-lg whitespace-pre-wrap">
+          <div class="text-sm bg-base-300 p-3 rounded-lg">
             {@asset.desc}
           </div>
         </div>
@@ -1538,16 +1631,29 @@ defmodule MsfailabWeb.DatabaseBrowser do
     """
   end
 
+  # Renders a row of related asset links in compact inline format
+  # Example: "Services: tcp/80 (http), tcp/443 (https), udp/53 (domain)"
+  attr :label, :string, required: true
+  attr :assets, :list, required: true
   attr :type, :string, required: true
-  attr :count, :integer, required: true
-  attr :icon, :string, required: true
+  attr :format_fn, :any, required: true
+  attr :on_navigate, :string, required: true
 
-  defp related_badge(assigns) do
+  defp related_asset_row(assigns) do
     ~H"""
-    <span class="badge badge-lg gap-2">
-      <.icon name={@icon} class="size-4" />
-      {format_number(@count)} {pluralize(@type, @count)}
-    </span>
+    <div class="flex flex-wrap items-center gap-1.5">
+      <span class="font-medium text-base-content/70 mr-1">{@label}:</span>
+      <button
+        :for={asset <- @assets}
+        type="button"
+        class="inline-flex items-center px-2 py-0.5 text-xs font-mono bg-base-300 hover:bg-base-100 border border-base-content/20 rounded cursor-pointer transition-colors"
+        phx-click={@on_navigate}
+        phx-value-type={@type}
+        phx-value-id={asset.id}
+      >
+        {@format_fn.(asset)}
+      </button>
+    </div>
     """
   end
 
@@ -1572,25 +1678,55 @@ defmodule MsfailabWeb.DatabaseBrowser do
   end
 
   # Check if host has related assets
-  defp has_related_assets?(asset) do
-    [:services_count, :vulns_count, :notes_count, :sessions_count, :loots_count]
-    |> Enum.any?(&(Map.get(asset, &1, 0) > 0))
+  defp has_host_related_assets?(asset) do
+    [:related_services, :related_vulns, :related_notes, :related_sessions, :related_loots]
+    |> Enum.any?(fn key -> Map.get(asset, key, []) != [] end)
   end
 
   # Check if service has related assets
-  defp has_service_related?(asset) do
-    [:vulns_count, :creds_count, :notes_count]
-    |> Enum.any?(&(Map.get(asset, &1, 0) > 0))
+  defp has_service_related_assets?(asset) do
+    [:related_vulns, :related_creds, :related_notes]
+    |> Enum.any?(fn key -> Map.get(asset, key, []) != [] end)
+  end
+
+  # Format functions for related asset links
+  # Service: tcp/80 (http)
+  defp format_service_link(service) do
+    base = "#{service.proto}/#{service.port}"
+    if service.name && service.name != "", do: "#{base} (#{service.name})", else: base
+  end
+
+  # Vuln: CVE-2021-44228 or truncated name
+  defp format_vuln_link(vuln) do
+    truncate(vuln.name || "unknown", 30)
+  end
+
+  # Note: host.os.nmap_fingerprint
+  defp format_note_link(note) do
+    truncate(note.ntype || "unknown", 25)
+  end
+
+  # Cred: root (password)
+  defp format_cred_link(cred) do
+    user = cred.user || "unknown"
+    if cred.ptype, do: "#{user} (#{cred.ptype})", else: user
+  end
+
+  # Loot: /etc/passwd or ltype
+  defp format_loot_link(loot) do
+    truncate(loot.name || loot.ltype || "unknown", 25)
+  end
+
+  # Session: meterpreter (active) or shell (closed)
+  defp format_session_link(session) do
+    status = if session.closed_at, do: "closed", else: "active"
+    "#{session.stype} (#{status})"
   end
 
   # Masks password for display
   defp mask_password(nil), do: "-"
   defp mask_password(""), do: "-"
   defp mask_password(pass), do: String.duplicate("*", min(String.length(pass), 16))
-
-  # Pluralizes a word based on count
-  defp pluralize(word, 1), do: String.trim_trailing(word, "s")
-  defp pluralize(word, _), do: word
 
   # ===========================================================================
   # Helper Functions
@@ -1673,6 +1809,16 @@ defmodule MsfailabWeb.DatabaseBrowser do
     |> String.replace("\"", "&quot;")
     |> String.replace("'", "&#39;")
   end
+
+  defp format_note_data(nil), do: "-"
+  defp format_note_data(data) when is_binary(data), do: data
+
+  defp format_note_data(data) when is_map(data) do
+    # Format deserialized Ruby Marshal data as readable key-value pairs
+    Enum.map_join(data, "\n", fn {key, value} -> "#{key}: #{inspect(value)}" end)
+  end
+
+  defp format_note_data(data), do: inspect(data)
 
   # coveralls-ignore-stop
 end

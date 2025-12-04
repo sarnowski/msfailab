@@ -949,7 +949,8 @@ defmodule Msfailab.Tracks.TrackServer do
 
   defp find_executing_msf_tool(turn) do
     Enum.find(turn.tool_invocations, fn {_id, ts} ->
-      ts.status == :executing and ts.command_id == nil and ts.tool_name == "msf_command"
+      ts.status == :executing and ts.command_id == nil and
+        ts.tool_name == "execute_msfconsole_command"
     end)
   end
 
