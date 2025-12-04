@@ -51,6 +51,7 @@ defmodule Msfailab.Tracks do
   alias Msfailab.Tracks.ChatContext
   alias Msfailab.Tracks.ChatState
   alias Msfailab.Tracks.ConsoleHistoryBlock
+  alias Msfailab.Tracks.Memory
   alias Msfailab.Tracks.Track
   alias Msfailab.Tracks.TrackServer
   alias Msfailab.Workspaces.Workspace
@@ -270,6 +271,25 @@ defmodule Msfailab.Tracks do
   end
 
   @doc """
+  Updates the memory for a track.
+
+  Memory is stored as an embedded schema and persisted to the database.
+  """
+  @spec update_track_memory(integer(), Memory.t()) ::
+          {:ok, Track.t()} | {:error, Ecto.Changeset.t()}
+  def update_track_memory(track_id, memory) when is_integer(track_id) do
+    track = get_track(track_id)
+
+    if track do
+      track
+      |> Track.memory_changeset(memory)
+      |> Repo.update()
+    else
+      {:error, :not_found}
+    end
+  end
+
+  @doc """
   Archives a track.
 
   Archived tracks are not listed by default and cannot be accessed via slug.
@@ -403,7 +423,8 @@ defmodule Msfailab.Tracks do
            %{
              console_status: TrackServer.console_status(),
              current_prompt: String.t(),
-             console_history: [ConsoleHistoryBlock.t()]
+             console_history: [ConsoleHistoryBlock.t()],
+             memory: Memory.t()
            }}
           | {:error, :not_found}
   def get_track_state(track_id) do
@@ -520,28 +541,47 @@ defmodule Msfailab.Tracks do
   # shows persisted chat history even during transient failures.
   defp load_chat_state_from_db(track_id) do
     persisted_entries = ChatContext.load_entries(track_id)
-    chat_entries = ChatContext.entries_to_chat_entries(persisted_entries)
+    chat_entries_raw = ChatContext.entries_to_chat_entries(persisted_entries)
+
+    # Apply effective statuses - tools with approval_required: false should show
+    # as :approved even if the DB has :pending status
+    chat_entries = apply_effective_tool_statuses(chat_entries_raw)
 
     # Determine turn status from entries - if there are pending/approved tools,
     # show appropriate status; otherwise idle
-    turn_status = infer_turn_status_from_entries(persisted_entries)
+    turn_status = infer_turn_status_from_entries(chat_entries)
 
     {:ok, ChatState.new(chat_entries, turn_status, nil)}
   end
 
-  defp infer_turn_status_from_entries(entries) do
+  # Updates tool invocation entries with effective statuses based on approval requirements
+  defp apply_effective_tool_statuses(chat_entries) do
+    Enum.map(chat_entries, fn entry ->
+      if entry.entry_type == :tool_invocation and entry.tool_status == :pending do
+        apply_effective_status(entry)
+      else
+        entry
+      end
+    end)
+  end
+
+  defp apply_effective_status(entry) do
+    case Msfailab.Tools.get_tool(entry.tool_name) do
+      {:ok, %{approval_required: false}} -> %{entry | tool_status: :approved}
+      _ -> entry
+    end
+  end
+
+  # Infer turn status from ChatEntry structs (with atom statuses)
+  defp infer_turn_status_from_entries(chat_entries) do
     has_pending_tools =
-      Enum.any?(entries, fn entry ->
-        entry.entry_type == "tool_invocation" and
-          entry.tool_invocation != nil and
-          entry.tool_invocation.status == "pending"
+      Enum.any?(chat_entries, fn entry ->
+        entry.entry_type == :tool_invocation and entry.tool_status == :pending
       end)
 
     has_approved_tools =
-      Enum.any?(entries, fn entry ->
-        entry.entry_type == "tool_invocation" and
-          entry.tool_invocation != nil and
-          entry.tool_invocation.status == "approved"
+      Enum.any?(chat_entries, fn entry ->
+        entry.entry_type == :tool_invocation and entry.tool_status == :approved
       end)
 
     cond do

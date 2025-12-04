@@ -26,6 +26,15 @@ defmodule Msfailab.Repo.Migrations.CreateTracks do
       add :archived_at, :utc_datetime
       add :container_id, references(:msfailab_containers, on_delete: :restrict), null: false
 
+      # Track memory for AI agent short-term memory across context compactions
+      add :memory, :map,
+        default: %{
+          "objective" => nil,
+          "focus" => nil,
+          "tasks" => [],
+          "working_notes" => nil
+        }
+
       timestamps()
     end
 

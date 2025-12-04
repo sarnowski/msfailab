@@ -125,6 +125,7 @@ config :logger, :default_formatter,
     :output_tokens,
     :recoverable,
     :chat_entries,
+    :entry_id,
     # Bash command metadata
     :command_id,
     :output_bytes

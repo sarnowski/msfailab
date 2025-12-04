@@ -404,4 +404,50 @@ defmodule Msfailab.Tracks.ChatEntryTest do
       assert chat_entry.content == ""
     end
   end
+
+  describe "memory_snapshot/4" do
+    test "creates a memory entry with all required fields" do
+      timestamp = DateTime.utc_now()
+      entry = ChatEntry.memory_snapshot("uuid-123", 1, "## Track Memory\n...", timestamp)
+
+      assert entry.id == "uuid-123"
+      assert entry.position == 1
+      assert entry.entry_type == :memory
+      assert entry.role == :user
+      assert entry.message_type == :prompt
+      assert entry.content == "## Track Memory\n..."
+      assert entry.rendered_html == nil
+      assert entry.streaming == false
+      assert entry.timestamp == timestamp
+    end
+
+    test "uses default timestamp when not provided" do
+      entry = ChatEntry.memory_snapshot("uuid", 1, "content")
+
+      assert %DateTime{} = entry.timestamp
+    end
+
+    test "supports integer id" do
+      entry = ChatEntry.memory_snapshot(42, 1, "content")
+
+      assert entry.id == 42
+    end
+  end
+
+  describe "memory?/1" do
+    test "returns true for memory entries" do
+      entry = ChatEntry.memory_snapshot("uuid", 1, "## Track Memory")
+      assert ChatEntry.memory?(entry) == true
+    end
+
+    test "returns false for message entries" do
+      entry = ChatEntry.user_prompt("uuid", 1, "Hello")
+      assert ChatEntry.memory?(entry) == false
+    end
+
+    test "returns false for tool invocation entries" do
+      entry = ChatEntry.tool_invocation("id", 1, "call", "tool", %{}, :pending)
+      assert ChatEntry.memory?(entry) == false
+    end
+  end
 end

@@ -34,6 +34,7 @@ defmodule MsfailabWeb.WorkspaceLive do
   alias Msfailab.Slug
   alias Msfailab.Tracks
   alias Msfailab.Tracks.ChatState
+  alias Msfailab.Tracks.Memory
   alias Msfailab.Tracks.Track
   alias Msfailab.Workspaces
   alias MsfailabWeb.WorkspaceLive.Helpers
@@ -64,6 +65,7 @@ defmodule MsfailabWeb.WorkspaceLive do
       |> assign(:console_segments, [])
       |> assign(:console_status, :offline)
       |> assign(:current_prompt, "")
+      |> assign(:memory, Memory.new())
       # Event subscription tracking
       |> assign(:subscribed_workspace_id, nil)
 
@@ -105,8 +107,8 @@ defmodule MsfailabWeb.WorkspaceLive do
             |> put_flash(:error, "Track not found")
             |> push_navigate(to: ~p"/#{workspace.slug}")
           else
-            # Load console state for current track
-            {console_status, current_prompt, console_segments} =
+            # Load console state and memory for current track
+            {console_status, current_prompt, console_segments, memory} =
               load_console_state(current_track)
 
             # Load chat state for current track
@@ -120,6 +122,7 @@ defmodule MsfailabWeb.WorkspaceLive do
             |> assign(:console_status, console_status)
             |> assign(:current_prompt, current_prompt)
             |> assign(:chat_state, chat_state)
+            |> assign(:memory, memory)
             |> assign(:page_title, Helpers.page_title(workspace, current_track))
             |> maybe_assign_selected_model(current_track)
             |> maybe_assign_autonomous_mode(current_track)
@@ -160,6 +163,7 @@ defmodule MsfailabWeb.WorkspaceLive do
           <.track_content
             track={@current_track}
             chat_state={@chat_state}
+            memory={@memory}
             console_segments={@console_segments}
             console_status={@console_status}
             current_prompt={@current_prompt}
@@ -601,13 +605,14 @@ defmodule MsfailabWeb.WorkspaceLive do
     socket =
       if current_track && current_track.id == track_id do
         # Fetch updated console state and re-render terminal
-        {console_status, current_prompt, console_segments} =
+        {console_status, current_prompt, console_segments, memory} =
           load_console_state(current_track)
 
         socket
         |> assign(:console_segments, console_segments)
         |> assign(:console_status, console_status)
         |> assign(:current_prompt, current_prompt)
+        |> assign(:memory, memory)
       else
         socket
       end
@@ -621,9 +626,13 @@ defmodule MsfailabWeb.WorkspaceLive do
 
     socket =
       if current_track && current_track.id == track_id do
-        # Fetch updated chat state and re-render chat panel
+        # Fetch updated chat state and memory, then re-render chat panel
         chat_state = load_chat_state(current_track)
-        assign(socket, :chat_state, chat_state)
+        {_, _, _, memory} = load_console_state(current_track)
+
+        socket
+        |> assign(:chat_state, chat_state)
+        |> assign(:memory, memory)
       else
         socket
       end
@@ -681,27 +690,27 @@ defmodule MsfailabWeb.WorkspaceLive do
     model = socket.assigns.selected_model
 
     if track do
-      case Tracks.start_chat_turn(track.id, prompt, model) do
-        {:ok, _turn_id} ->
-          socket
-          |> assign(:input_text, "")
-
-        {:error, :not_found} ->
-          socket
-          |> put_flash(:error, "Track server not found")
-
-        {:error, reason} ->
-          socket
-          |> put_flash(:error, "Failed to send message: #{inspect(reason)}")
-      end
+      do_start_chat_turn(socket, track.id, prompt, model)
     else
-      socket
-      |> put_flash(:error, "No track selected")
+      put_flash(socket, :error, "No track selected")
     end
   end
 
   defp handle_send_command(socket, _mode, _command) do
     socket
+  end
+
+  defp do_start_chat_turn(socket, track_id, prompt, model) do
+    case Tracks.start_chat_turn(track_id, prompt, model) do
+      {:ok, _turn_id} ->
+        assign(socket, :input_text, "")
+
+      {:error, :not_found} ->
+        put_flash(socket, :error, "Track server not found")
+
+      {:error, reason} ->
+        put_flash(socket, :error, "Failed to send message: #{inspect(reason)}")
+    end
   end
 
   # ===========================================================================
@@ -737,19 +746,21 @@ defmodule MsfailabWeb.WorkspaceLive do
   # ---------------------------------------------------------------------------
 
   @typep console_state ::
-           {Tracks.TrackServer.console_status(), String.t(), [Helpers.console_segment()]}
+           {Tracks.TrackServer.console_status(), String.t(), [Helpers.console_segment()],
+            Memory.t()}
 
   @spec load_console_state(map() | nil) :: console_state()
-  defp load_console_state(nil), do: {:offline, "", []}
+  defp load_console_state(nil), do: {:offline, "", [], Memory.new()}
 
   defp load_console_state(track) do
     case Tracks.get_track_state(track.id) do
       {:ok, state} ->
         segments = Helpers.blocks_to_segments(state.console_history)
-        {state.console_status, state.current_prompt, segments}
+        {state.console_status, state.current_prompt, segments, state.memory}
 
-      {:error, :not_found} ->
-        {:offline, "", []}
+      # TrackServer not running or other error
+      _error ->
+        {:offline, "", [], Memory.new()}
     end
   end
 

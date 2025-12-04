@@ -71,6 +71,7 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
   alias Msfailab.LLM.ChatRequest
   alias Msfailab.LLM.Events, as: LLMEvents
   alias Msfailab.Tools
+  alias Msfailab.Tools.MemoryExecutor
   alias Msfailab.Tools.MsfDataExecutor
   alias Msfailab.Tracks.ChatContext
   alias Msfailab.Tracks.ChatEntry
@@ -112,23 +113,22 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
   `{new_turn, new_entries, actions}` or `:no_action` if nothing to do.
   """
   @spec reconcile(TurnState.t(), ConsoleState.t(), [ChatEntry.t()], map()) ::
-          {TurnState.t(), [ChatEntry.t()], [action()]} | :no_action
+          {TurnState.t(), [ChatEntry.t()], [action()]}
+          | :no_action
   def reconcile(%TurnState{} = turn, %ConsoleState{} = console, entries, context) do
     cond do
       turn_inactive?(turn) ->
         :no_action
+
+      # Execute all approved tools via ExecutionManager
+      should_execute_approved_tools?(turn) ->
+        execute_approved_tools(turn, entries, context)
 
       has_pending_approvals?(turn) ->
         maybe_transition_to_pending_approval(turn, entries)
 
       should_transition_to_executing?(turn) ->
         transition_to_executing(turn, console, entries, context)
-
-      should_execute_next_sequential_tool?(turn, console) ->
-        execute_next_sequential_tool(turn, console, entries, context)
-
-      should_execute_parallel_tools?(turn) ->
-        execute_all_parallel_tools(turn, entries, context)
 
       should_start_next_llm_request?(turn) ->
         start_llm_request(turn, entries, context)
@@ -184,41 +184,10 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
     Enum.any?(turn.tool_invocations, fn {_id, ts} -> ts.status == :approved end)
   end
 
-  defp should_execute_next_sequential_tool?(turn, console) do
-    turn.status in [:pending_approval, :executing_tools] and
-      console.status == :ready and
-      no_sequential_tool_executing?(turn) and
-      has_approved_sequential_tool?(turn)
-  end
-
-  defp no_sequential_tool_executing?(turn) do
-    not Enum.any?(turn.tool_invocations, fn {_id, ts} ->
-      ts.status == :executing and sequential_tool?(ts.tool_name)
-    end)
-  end
-
-  defp has_approved_sequential_tool?(turn) do
-    Enum.any?(turn.tool_invocations, fn {_id, ts} ->
-      ts.status == :approved and sequential_tool?(ts.tool_name)
-    end)
-  end
-
-  defp should_execute_parallel_tools?(turn) do
-    turn.status in [:pending_approval, :executing_tools] and
-      has_approved_parallel_tool?(turn)
-  end
-
-  defp has_approved_parallel_tool?(turn) do
-    Enum.any?(turn.tool_invocations, fn {_id, ts} ->
-      ts.status == :approved and not sequential_tool?(ts.tool_name)
-    end)
-  end
-
-  defp sequential_tool?(tool_name) do
-    case Tools.get_tool(tool_name) do
-      {:ok, tool} -> tool.sequential
-      {:error, _} -> true
-    end
+  defp should_execute_approved_tools?(turn) do
+    # Execute approved tools from any active status
+    turn.status in [:streaming, :pending_approval, :executing_tools] and
+      has_approved_tools?(turn)
   end
 
   defp all_tools_terminal?(turn) do
@@ -627,29 +596,35 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
         {new_turn, new_entries, actions}
 
       %{tool_name: tool_name} = tool_state when tool_state != nil ->
-        # Check if this is an MSF data tool (executes synchronously)
-        if MsfDataExecutor.handles_tool?(tool_name) do
-          execute_msf_data_tool(turn, entries, entry_id, tool_state, context)
-        else
-          # Unknown tool type
-          Logger.error("Unknown tool type: #{tool_name}")
+        cond do
+          # Memory tools (executes synchronously, updates track memory)
+          MemoryExecutor.handles_tool?(tool_name) ->
+            execute_memory_tool(turn, entries, entry_id, tool_state, context)
 
-          new_tool_state = %{tool_state | status: :error}
+          # MSF data tools (executes synchronously)
+          MsfDataExecutor.handles_tool?(tool_name) ->
+            execute_msf_data_tool(turn, entries, entry_id, tool_state, context)
 
-          new_turn = %TurnState{
-            turn
-            | tool_invocations: Map.put(turn.tool_invocations, entry_id, new_tool_state)
-          }
+          true ->
+            # Unknown tool type
+            Logger.error("Unknown tool type: #{tool_name}")
 
-          new_entries = update_chat_entry_status(entries, entry_id, :error)
+            new_tool_state = %{tool_state | status: :error}
 
-          actions = [
-            {:update_tool_status, entry_id, "error",
-             [error_message: "Unknown tool: #{tool_name}", duration_ms: 0]},
-            :broadcast_chat_state
-          ]
+            new_turn = %TurnState{
+              turn
+              | tool_invocations: Map.put(turn.tool_invocations, entry_id, new_tool_state)
+            }
 
-          {new_turn, new_entries, actions}
+            new_entries = update_chat_entry_status(entries, entry_id, :error)
+
+            actions = [
+              {:update_tool_status, entry_id, "error",
+               [error_message: "Unknown tool: #{tool_name}", duration_ms: 0]},
+              :broadcast_chat_state
+            ]
+
+            {new_turn, new_entries, actions}
         end
 
       nil ->
@@ -729,6 +704,72 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
     do: "Validation error: #{inspect(errors)}"
 
   defp format_msf_data_error(reason), do: inspect(reason)
+
+  # Executes memory tools synchronously and returns results immediately.
+  # Memory tools now handle their own DB persistence via the Executor.
+  @spec execute_memory_tool(TurnState.t(), [ChatEntry.t()], integer(), map(), map()) ::
+          {TurnState.t(), [ChatEntry.t()], [action()]}
+  defp execute_memory_tool(%TurnState{} = turn, entries, entry_id, tool_state, context) do
+    started_at = DateTime.utc_now()
+
+    # Build executor context with track_id for MemoryExecutor
+    executor_context = %{track_id: context.track_id}
+
+    case MemoryExecutor.execute(tool_state.tool_name, tool_state.arguments, executor_context) do
+      {:ok, result} ->
+        duration = DateTime.diff(DateTime.utc_now(), started_at, :millisecond)
+        result_content = Jason.encode!(result, pretty: true)
+
+        Logger.info("Memory tool complete: #{tool_state.tool_name} (#{duration}ms)")
+
+        new_tool_state = %{tool_state | status: :success, started_at: started_at}
+
+        new_turn = %TurnState{
+          turn
+          | tool_invocations: Map.put(turn.tool_invocations, entry_id, new_tool_state)
+        }
+
+        new_entries =
+          update_chat_entry_status(entries, entry_id, :success, result_content: result_content)
+
+        actions = [
+          {:update_tool_status, entry_id, "success",
+           [result_content: result_content, duration_ms: duration]},
+          :reconcile,
+          :broadcast_chat_state
+        ]
+
+        {new_turn, new_entries, actions}
+
+      {:error, reason} ->
+        duration = DateTime.diff(DateTime.utc_now(), started_at, :millisecond)
+        error_message = format_memory_error(reason)
+
+        Logger.warning("Memory tool failed: #{tool_state.tool_name} - #{error_message}")
+
+        new_tool_state = %{tool_state | status: :error, started_at: started_at}
+
+        new_turn = %TurnState{
+          turn
+          | tool_invocations: Map.put(turn.tool_invocations, entry_id, new_tool_state)
+        }
+
+        new_entries = update_chat_entry_status(entries, entry_id, :error)
+
+        actions = [
+          {:update_tool_status, entry_id, "error",
+           [error_message: error_message, duration_ms: duration]},
+          :reconcile,
+          :broadcast_chat_state
+        ]
+
+        {new_turn, new_entries, actions}
+    end
+  end
+
+  defp format_memory_error(reason) when is_binary(reason), do: reason
+  defp format_memory_error(:track_not_found), do: "Track not found"
+  defp format_memory_error(reason), do: inspect(reason)
 
   @doc """
   Completes a tool execution.
@@ -955,54 +996,68 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
   # Private Helpers
   # ============================================================================
 
-  @spec execute_next_sequential_tool(TurnState.t(), ConsoleState.t(), [ChatEntry.t()], map()) ::
-          {TurnState.t(), [ChatEntry.t()], [action()]} | :no_action
-  defp execute_next_sequential_tool(%TurnState{} = turn, _console, entries, context) do
-    # Find first approved sequential tool by position
+  @spec execute_approved_tools(TurnState.t(), [ChatEntry.t()], map()) ::
+          {TurnState.t(), [ChatEntry.t()], [action()]}
+          | :no_action
+  defp execute_approved_tools(%TurnState{} = turn, entries, context) do
+    # Find all approved tools, sorted by position (LLM-specified order)
     approved_tools =
       turn.tool_invocations
-      |> Enum.filter(fn {_id, ts} ->
-        ts.status == :approved and sequential_tool?(ts.tool_name)
-      end)
+      |> Enum.filter(fn {_id, ts} -> ts.status == :approved end)
       |> Enum.sort_by(fn {id, _ts} -> get_entry_position(entries, id) end)
 
     case approved_tools do
-      [{entry_id, _tool_state} | _] ->
-        start_tool_execution(turn, entries, entry_id, context)
-
-      [] ->
-        :no_action
-    end
-  end
-
-  @spec execute_all_parallel_tools(TurnState.t(), [ChatEntry.t()], map()) ::
-          {TurnState.t(), [ChatEntry.t()], [action()]} | :no_action
-  defp execute_all_parallel_tools(%TurnState{} = turn, entries, context) do
-    # Find all approved parallel tools, sorted by position
-    approved_parallel =
-      turn.tool_invocations
-      |> Enum.filter(fn {_id, ts} ->
-        ts.status == :approved and not sequential_tool?(ts.tool_name)
-      end)
-      |> Enum.sort_by(fn {id, _ts} -> get_entry_position(entries, id) end)
-
-    case approved_parallel do
       [] ->
         :no_action
 
       tools ->
-        # Execute all parallel tools in one batch
-        {final_turn, final_entries, all_actions} =
-          Enum.reduce(tools, {turn, entries, []}, fn {entry_id, _},
-                                                     {acc_turn, acc_entries, acc_actions} ->
-            {new_turn, new_entries, actions} =
-              start_tool_execution(acc_turn, acc_entries, entry_id, context)
+        # Execute all approved tools - ExecutionManager handles mutex grouping
+        initial_acc = {turn, entries, []}
 
-            {new_turn, new_entries, acc_actions ++ actions}
-          end)
+        {final_turn, final_entries, all_actions} =
+          Enum.reduce(tools, initial_acc, &execute_tool(&1, &2, context))
 
         {final_turn, final_entries, all_actions}
     end
+  end
+
+  # Helper to execute a single tool and accumulate results
+  @spec execute_tool(
+          {integer(), map()},
+          {TurnState.t(), [ChatEntry.t()], [action()]},
+          map()
+        ) ::
+          {TurnState.t(), [ChatEntry.t()], [action()]}
+  defp execute_tool(
+         {entry_id, tool_state},
+         {acc_turn, acc_entries, acc_actions},
+         context
+       ) do
+    {new_turn, new_entries, actions} =
+      start_tool_execution(acc_turn, acc_entries, entry_id, context)
+
+    {new_turn, new_entries, acc_actions ++ actions}
+  rescue
+    error ->
+      # Tool execution crashed - mark as error and continue with other tools
+      error_message = Exception.message(error)
+      Logger.error("Tool execution crashed: #{tool_state.tool_name} - #{error_message}")
+
+      new_tool_state = %{tool_state | status: :error}
+
+      new_turn = %{
+        acc_turn
+        | tool_invocations: Map.put(acc_turn.tool_invocations, entry_id, new_tool_state)
+      }
+
+      new_entries = update_chat_entry_status(acc_entries, entry_id, :error)
+
+      actions = [
+        {:update_tool_status, entry_id, "error", [error_message: error_message]},
+        :broadcast_chat_state
+      ]
+
+      {new_turn, new_entries, acc_actions ++ actions}
   end
 
   @spec get_entry_position([ChatEntry.t()], integer()) :: integer()

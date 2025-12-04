@@ -479,6 +479,7 @@ defmodule MsfailabWeb.WorkspaceComponents do
       <.track_content
         track={@current_track}
         chat_state={@chat_state}
+        memory={@memory}
         console_segments={@console_segments}
         console_status={@console_status}
         current_prompt={@current_prompt}
@@ -491,6 +492,7 @@ defmodule MsfailabWeb.WorkspaceComponents do
   """
   attr :track, :map, required: true
   attr :chat_state, Msfailab.Tracks.ChatState, required: true
+  attr :memory, Msfailab.Tracks.Memory, required: true
   attr :console_segments, :list, default: []
   attr :console_status, :atom, default: :offline
   attr :current_prompt, :string, default: ""
@@ -514,7 +516,7 @@ defmodule MsfailabWeb.WorkspaceComponents do
       >
         <!-- AI Chat Side -->
         <div data-pane-left class="flex flex-col overflow-hidden min-w-0">
-          <.chat_panel chat_state={@chat_state} />
+          <.chat_panel chat_state={@chat_state} memory={@memory} />
         </div>
         <!-- Draggable divider -->
         <div
@@ -556,19 +558,18 @@ defmodule MsfailabWeb.WorkspaceComponents do
   Renders the AI chat panel with message bubbles.
   """
   attr :chat_state, Msfailab.Tracks.ChatState, required: true
+  attr :memory, Msfailab.Tracks.Memory, required: true
 
   def chat_panel(assigns) do
+    # Filter out :memory entries from display
+    visible_entries = Enum.reject(assigns.chat_state.entries, &(&1.entry_type == :memory))
+    assigns = assign(assigns, :visible_entries, visible_entries)
+
     ~H"""
     <!-- AI Chat Panel -->
     <div class="flex-1 flex flex-col bg-base-100 rounded-box border-2 border-base-300 overflow-hidden">
-      <!-- Chat header with status indicator -->
-      <div class="flex items-center justify-between px-3 py-2 border-b border-base-300 bg-base-200/50">
-        <div class="flex items-center gap-2">
-          <.icon name="hero-chat-bubble-left-right" class="size-4 text-base-content/60" />
-          <span class="text-xs font-medium text-base-content/60">Security Research Assistant</span>
-        </div>
-        <.chat_status_badge status={@chat_state.turn_status} />
-      </div>
+      <!-- Chat header with memory display -->
+      <.memory_header memory={@memory} turn_status={@chat_state.turn_status} />
       <!-- Chat messages wrapper (relative for scroll button positioning) -->
       <div class="flex-1 relative overflow-hidden">
         <!-- Chat messages container -->
@@ -577,7 +578,7 @@ defmodule MsfailabWeb.WorkspaceComponents do
           phx-hook="AutoScroll"
           class="absolute inset-0 overflow-y-auto p-4 space-y-4"
         >
-          <%= if @chat_state.entries == [] do %>
+          <%= if @visible_entries == [] do %>
             <!-- Empty state with responsible use warning -->
             <div class="flex-1 flex items-center justify-center h-full">
               <div class="alert alert-warning max-w-lg shadow-lg">
@@ -604,7 +605,7 @@ defmodule MsfailabWeb.WorkspaceComponents do
             </div>
           <% else %>
             <!-- Message list -->
-            <.chat_entry :for={entry <- @chat_state.entries} entry={entry} />
+            <.chat_entry :for={entry <- @visible_entries} entry={entry} />
           <% end %>
         </div>
         <!-- Scroll to bottom button (visibility controlled by AutoScroll hook) -->
@@ -620,6 +621,135 @@ defmodule MsfailabWeb.WorkspaceComponents do
         </button>
       </div>
     </div>
+    """
+  end
+
+  @doc """
+  Renders the memory header in the chat panel.
+
+  Shows the objective as title (or default "Security Research Assistant"),
+  with a collapsible subtitle showing focus, current task, and task count.
+  """
+  attr :memory, Msfailab.Tracks.Memory, required: true
+  attr :turn_status, :atom, required: true
+
+  def memory_header(assigns) do
+    memory = assigns.memory
+
+    # Calculate header title
+    title = memory.objective || "Security Research Assistant"
+
+    # Calculate task stats
+    completed_count = Enum.count(memory.tasks, &(&1.status == :completed))
+    total_count = length(memory.tasks)
+    non_completed_tasks = Enum.reject(memory.tasks, &(&1.status == :completed))
+
+    # Find current task (first in_progress, or first pending)
+    current_task =
+      Enum.find(memory.tasks, fn t -> t.status == :in_progress end) ||
+        Enum.find(memory.tasks, fn t -> t.status == :pending end)
+
+    # Determine if subtitle should be shown
+    has_focus = memory.focus != nil and memory.focus != ""
+    has_non_completed_tasks = non_completed_tasks != []
+    show_subtitle = has_focus or has_non_completed_tasks
+
+    assigns =
+      assigns
+      |> assign(:title, title)
+      |> assign(:has_focus, has_focus)
+      |> assign(:current_task, current_task)
+      |> assign(:completed_count, completed_count)
+      |> assign(:total_count, total_count)
+      |> assign(:show_subtitle, show_subtitle)
+      |> assign(:has_non_completed_tasks, has_non_completed_tasks)
+
+    ~H"""
+    <details class="group">
+      <summary class="cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden border-b border-base-300 bg-base-200/50 hover:bg-base-200">
+        <!-- Collapsed header -->
+        <div class="flex items-center justify-between px-3 py-2">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2">
+              <.icon name="hero-chat-bubble-left-right" class="size-4 text-base-content/60 shrink-0" />
+              <span class="text-sm font-medium text-base-content truncate">{@title}</span>
+              <.icon
+                name="hero-chevron-down"
+                class="size-3 text-base-content/40 transition-transform group-open:rotate-180 shrink-0"
+              />
+            </div>
+            <!-- Subtitle line -->
+            <div
+              :if={@show_subtitle}
+              class="flex items-center gap-1.5 mt-0.5 ml-6 text-xs text-base-content/60 truncate"
+            >
+              <span :if={@has_focus} class="truncate max-w-[40%]">{@memory.focus}</span>
+              <span :if={@has_focus && @current_task} class="text-base-content/30">·</span>
+              <span :if={@current_task} class="truncate max-w-[40%]">{@current_task.content}</span>
+              <span :if={@total_count > 0} class="text-base-content/30">·</span>
+              <span :if={@total_count > 0} class="shrink-0">{@completed_count}/{@total_count} ☑</span>
+            </div>
+          </div>
+          <.chat_status_badge status={@turn_status} />
+        </div>
+      </summary>
+      <!-- Expanded content -->
+      <div class="px-4 py-3 border-b border-base-300 bg-base-200/30 space-y-3">
+        <!-- Focus section -->
+        <div :if={@has_focus}>
+          <div class="text-[10px] font-semibold uppercase tracking-wider text-base-content/40 mb-1">
+            Focus
+          </div>
+          <div class="text-sm text-base-content">{@memory.focus}</div>
+        </div>
+        <!-- Tasks section with DaisyUI steps -->
+        <div :if={@total_count > 0}>
+          <div class="text-[10px] font-semibold uppercase tracking-wider text-base-content/40 mb-2">
+            Tasks
+          </div>
+          <ul class="steps steps-vertical text-sm">
+            <li
+              :for={task <- @memory.tasks}
+              class={[
+                "step",
+                task.status == :completed && "step-primary",
+                task.status == :in_progress && "step-info"
+              ]}
+            >
+              <span class={[
+                "text-left",
+                task.status == :completed && "line-through text-base-content/50",
+                task.status == :in_progress && "font-medium text-info"
+              ]}>
+                {task.content}
+                <span :if={task.status == :in_progress} class="text-xs text-info/70 ml-1">
+                  ← in progress
+                </span>
+              </span>
+            </li>
+          </ul>
+        </div>
+        <!-- Working notes section -->
+        <div :if={@memory.working_notes && @memory.working_notes != ""}>
+          <div class="text-[10px] font-semibold uppercase tracking-wider text-base-content/40 mb-1">
+            Notes
+          </div>
+          <div class="text-sm text-base-content/80 prose prose-sm max-w-none whitespace-pre-wrap">
+            {@memory.working_notes}
+          </div>
+        </div>
+        <!-- Empty state -->
+        <div
+          :if={
+            !@has_focus && @total_count == 0 &&
+              (!@memory.working_notes || @memory.working_notes == "")
+          }
+          class="text-sm text-base-content/40 italic"
+        >
+          No memory set. The AI will update this as it works.
+        </div>
+      </div>
+    </details>
     """
   end
 
@@ -795,7 +925,8 @@ defmodule MsfailabWeb.WorkspaceComponents do
   #                                                              │
   #                                           dispatch by entry.tool_status
   #                                                              │
-  #     ├── :pending   → tool_pending_box (common)
+  #     ├── :pending   → tool_pending_box (shows approval buttons)
+  #     ├── :approved  → tool_approved_box (waiting to execute, no buttons)
   #     ├── :declined  → tool_declined_box (common)
   #     ├── :executing → tool_executing_box (per-tool dispatch)
   #     ├── :success   → tool_finished_box (per-tool dispatch)
@@ -807,6 +938,8 @@ defmodule MsfailabWeb.WorkspaceComponents do
     <%= case @entry.tool_status do %>
       <% :pending -> %>
         <.tool_pending_box entry={@entry} />
+      <% :approved -> %>
+        <.tool_approved_box entry={@entry} />
       <% :declined -> %>
         <.tool_declined_box entry={@entry} />
       <% :executing -> %>
@@ -970,6 +1103,52 @@ defmodule MsfailabWeb.WorkspaceComponents do
     <.tool_box entry={@entry}>
       <.command_display prompt={@prompt} command={@command} />
       <.approval_buttons entry_id={@entry.id} />
+    </.tool_box>
+    """
+  end
+
+  # ---------------------------------------------------------------------------
+  # Approved State Renderers (waiting to execute, no approval buttons)
+  # ---------------------------------------------------------------------------
+
+  # Approved state for msf_command - waiting to execute
+  defp tool_approved_box(%{entry: %{tool_name: "msf_command"}} = assigns) do
+    prompt = assigns.entry.console_prompt || "msf6 > "
+    command = get_tool_command(assigns.entry.tool_arguments)
+    assigns = assigns |> assign(:prompt, prompt) |> assign(:command, command)
+
+    ~H"""
+    <.tool_box entry={@entry}>
+      <div class="bg-neutral rounded px-3 py-2 font-mono text-sm text-neutral-content">
+        {MsfailabWeb.Console.render_console_command(@prompt, @command)}
+      </div>
+    </.tool_box>
+    """
+  end
+
+  # Approved state for bash_command - waiting to execute
+  defp tool_approved_box(%{entry: %{tool_name: "bash_command"}} = assigns) do
+    command = get_tool_command(assigns.entry.tool_arguments)
+    assigns = assign(assigns, :command, command)
+
+    ~H"""
+    <.tool_box entry={@entry}>
+      <div class="bg-neutral rounded px-3 py-2 font-mono text-sm text-neutral-content">
+        {MsfailabWeb.Console.render_bash_command(@command)}
+      </div>
+    </.tool_box>
+    """
+  end
+
+  # Default approved state for unknown tools - waiting to execute
+  defp tool_approved_box(assigns) do
+    prompt = get_tool_prompt(assigns.entry)
+    command = get_tool_command(assigns.entry.tool_arguments)
+    assigns = assigns |> assign(:prompt, prompt) |> assign(:command, command)
+
+    ~H"""
+    <.tool_box entry={@entry}>
+      <.command_display prompt={@prompt} command={@command} />
     </.tool_box>
     """
   end

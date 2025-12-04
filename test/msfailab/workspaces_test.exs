@@ -244,4 +244,23 @@ defmodule Msfailab.WorkspacesTest do
       assert %Ecto.Changeset{} = Workspaces.change_workspace(workspace)
     end
   end
+
+  describe "slug_exists?/1" do
+    test "returns true when slug exists" do
+      {:ok, _workspace} = Workspaces.create_workspace(@valid_attrs)
+      assert Workspaces.slug_exists?("test-workspace") == true
+    end
+
+    test "returns false when slug does not exist" do
+      assert Workspaces.slug_exists?("nonexistent") == false
+    end
+
+    test "returns false for empty string" do
+      assert Workspaces.slug_exists?("") == false
+    end
+
+    test "returns false for nil" do
+      assert Workspaces.slug_exists?(nil) == false
+    end
+  end
 end

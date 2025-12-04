@@ -81,6 +81,7 @@ defmodule Msfailab.Tracks.TrackServer do
   alias Msfailab.Tracks.ChatEntry
   alias Msfailab.Tracks.ChatState
   alias Msfailab.Tracks.ConsoleHistoryBlock
+  alias Msfailab.Tracks.Memory
   alias Msfailab.Tracks.TrackServer.Action
   alias Msfailab.Tracks.TrackServer.Console
   alias Msfailab.Tracks.TrackServer.State
@@ -282,11 +283,15 @@ defmodule Msfailab.Tracks.TrackServer do
 
     # Load persisted chat entries (both messages and tool invocations)
     persisted_entries = ChatContext.load_entries(track_id)
-    chat_entries = ChatContext.entries_to_chat_entries(persisted_entries)
+    chat_entries_raw = ChatContext.entries_to_chat_entries(persisted_entries)
     next_entry_position = ChatContext.next_entry_position(track_id)
 
     # Rebuild tool_invocations map from persisted entries with pending/approved status
     tool_invocations = rebuild_tool_invocations(persisted_entries)
+
+    # Update chat_entries with effective statuses from tool_invocations
+    # This ensures the UI shows correct statuses even before reconciliation runs
+    chat_entries = apply_effective_statuses(chat_entries_raw, tool_invocations)
 
     # Get model from active turn if there are pending tools
     active_turn_model =
@@ -297,6 +302,7 @@ defmodule Msfailab.Tracks.TrackServer do
       end
 
     # Create initial state using the State module
+    # Note: Memory is not cached in TrackServer state - it's read from DB on demand
     state =
       State.from_persisted(
         %{
@@ -350,10 +356,19 @@ defmodule Msfailab.Tracks.TrackServer do
   end
 
   def handle_call(:get_state, _from, state) do
+    # Memory is no longer cached in TrackServer state.
+    # Load it from DB for the snapshot.
+    memory =
+      case Tracks.get_track(state.track_id) do
+        nil -> Memory.new()
+        track -> track.memory || Memory.new()
+      end
+
     snapshot = %{
       console_status: state.console.status,
       current_prompt: state.console.current_prompt,
-      console_history: state.console.history
+      console_history: state.console.history,
+      memory: memory
     }
 
     {:reply, snapshot, state}
@@ -735,6 +750,123 @@ defmodule Msfailab.Tracks.TrackServer do
 
   # coveralls-ignore-stop
 
+  # ---------------------------------------------------------------------------
+  # ExecutionManager Status Messages
+  # ---------------------------------------------------------------------------
+  # These handlers receive status updates from ExecutionManager Tasks.
+  # All tools (memory, msf_data, container) use the same message format.
+
+  @doc false
+  def handle_info({:tool_status, entry_id, :executing}, %State{} = state) do
+    Logger.debug("Tool executing", entry_id: entry_id)
+
+    case Map.get(state.turn.tool_invocations, entry_id) do
+      nil ->
+        {:noreply, state}
+
+      tool_state ->
+        new_tool_state = %{tool_state | status: :executing, started_at: DateTime.utc_now()}
+
+        new_turn = %{
+          state.turn
+          | status: :executing_tools,
+            tool_invocations: Map.put(state.turn.tool_invocations, entry_id, new_tool_state)
+        }
+
+        new_entries = update_entry_status(state.chat_entries, entry_id, :executing)
+
+        new_state = %{state | turn: new_turn, chat_entries: new_entries}
+
+        # Persist status update and broadcast
+        actions = [
+          {:update_tool_status, entry_id, "executing", []},
+          :broadcast_chat_state
+        ]
+
+        final_state = execute_actions(new_state, actions)
+        {:noreply, final_state}
+    end
+  end
+
+  def handle_info({:tool_status, entry_id, :success, result}, %State{} = state) do
+    case Map.get(state.turn.tool_invocations, entry_id) do
+      nil ->
+        {:noreply, state}
+
+      tool_state ->
+        duration = calculate_duration(tool_state.started_at)
+        result_content = encode_result(result)
+
+        Logger.info("Tool success: #{tool_state.tool_name} (#{duration}ms)")
+
+        new_tool_state = %{tool_state | status: :success}
+
+        new_turn = %{
+          state.turn
+          | tool_invocations: Map.put(state.turn.tool_invocations, entry_id, new_tool_state)
+        }
+
+        new_entries =
+          update_entry_status(state.chat_entries, entry_id, :success,
+            result_content: result_content
+          )
+
+        new_state = %{state | turn: new_turn, chat_entries: new_entries}
+
+        actions = [
+          {:update_tool_status, entry_id, "success",
+           [result_content: result_content, duration_ms: duration]},
+          :reconcile,
+          :broadcast_chat_state
+        ]
+
+        final_state = execute_actions(new_state, actions)
+        {:noreply, final_state}
+    end
+  end
+
+  def handle_info({:tool_status, entry_id, :error, reason}, %State{} = state) do
+    case Map.get(state.turn.tool_invocations, entry_id) do
+      nil ->
+        {:noreply, state}
+
+      tool_state ->
+        duration = calculate_duration(tool_state.started_at)
+        error_message = format_error_reason(reason)
+
+        Logger.warning("Tool error: #{tool_state.tool_name} - #{error_message}")
+
+        new_tool_state = %{tool_state | status: :error}
+
+        new_turn = %{
+          state.turn
+          | tool_invocations: Map.put(state.turn.tool_invocations, entry_id, new_tool_state)
+        }
+
+        new_entries = update_entry_status(state.chat_entries, entry_id, :error)
+
+        new_state = %{state | turn: new_turn, chat_entries: new_entries}
+
+        actions = [
+          {:update_tool_status, entry_id, "error",
+           [error_message: error_message, duration_ms: duration]},
+          :reconcile,
+          :broadcast_chat_state
+        ]
+
+        final_state = execute_actions(new_state, actions)
+        {:noreply, final_state}
+    end
+  end
+
+  def handle_info({:tool_async, entry_id, command_id}, %State{} = state) do
+    Logger.debug("Tool async started", entry_id: entry_id, command_id: command_id)
+
+    # Record command_id for matching completion events
+    new_turn = Turn.record_command_id(state.turn, entry_id, command_id)
+    {:noreply, %{state | turn: new_turn}}
+  end
+
   # Ignore other workspace events (ContainerUpdated, etc.)
   def handle_info(_event, state), do: {:noreply, state}
 
@@ -838,6 +970,53 @@ defmodule Msfailab.Tracks.TrackServer do
 
   defp handle_msf_tool_error(state, nil, _reason), do: state
 
+  # ---------------------------------------------------------------------------
+  # ExecutionManager Helper Functions
+  # ---------------------------------------------------------------------------
+
+  defp update_entry_status(entries, entry_id, status, opts \\ []) do
+    Enum.map(entries, fn entry ->
+      if matches_tool_entry?(entry, entry_id) do
+        apply_status_update(entry, status, opts)
+      else
+        entry
+      end
+    end)
+  end
+
+  defp apply_status_update(entry, status, opts) do
+    entry = %{entry | tool_status: status}
+
+    case Keyword.get(opts, :result_content) do
+      nil -> entry
+      content -> %{entry | result_content: content}
+    end
+  end
+
+  defp matches_tool_entry?(entry, entry_id) do
+    (entry.id == entry_id or entry.position == entry_id) and ChatEntry.tool_invocation?(entry)
+  end
+
+  defp calculate_duration(nil), do: 0
+
+  defp calculate_duration(started_at) do
+    DateTime.diff(DateTime.utc_now(), started_at, :millisecond)
+  end
+
+  defp encode_result(result) when is_binary(result), do: result
+
+  defp encode_result(result) do
+    case Jason.encode(result, pretty: true) do
+      {:ok, json} -> json
+      {:error, _} -> inspect(result)
+    end
+  end
+
+  defp format_error_reason(reason) when is_binary(reason), do: reason
+  defp format_error_reason(reason) when is_atom(reason), do: Atom.to_string(reason)
+  defp format_error_reason({:unknown_tool, name}), do: "Unknown tool: #{name}"
+  defp format_error_reason(reason), do: inspect(reason)
+
   # Reason: Reconciliation requires pending tools in state from LLM streaming.
   # Core reconciliation logic tested in Turn module (94.5%).
 
@@ -879,11 +1058,15 @@ defmodule Msfailab.Tracks.TrackServer do
     |> Enum.reduce(%{}, fn entry, acc ->
       ti = entry.tool_invocation
 
+      # Calculate effective status: if tool doesn't require approval and DB has
+      # "pending", treat it as :approved so reconciliation will execute it
+      effective_status = calculate_effective_status(ti.tool_name, ti.status)
+
       tool_state = %{
         tool_call_id: ti.tool_call_id,
         tool_name: ti.tool_name,
         arguments: ti.arguments || %{},
-        status: ChatEntry.tool_status_to_atom(ti.status),
+        status: effective_status,
         command_id: nil,
         started_at: nil
       }
@@ -893,6 +1076,39 @@ defmodule Msfailab.Tracks.TrackServer do
       Map.put(acc, entry.position, tool_state)
     end)
   end
+
+  # Calculates effective in-memory status based on tool's approval requirements
+  defp calculate_effective_status(tool_name, "pending"), do: effective_pending_status(tool_name)
+  defp calculate_effective_status(_tool_name, status), do: ChatEntry.tool_status_to_atom(status)
+
+  # For pending tools, check if the tool requires approval
+  defp effective_pending_status(tool_name) do
+    case Msfailab.Tools.get_tool(tool_name) do
+      {:ok, %{approval_required: true}} -> :pending
+      {:ok, %{approval_required: false}} -> :approved
+      {:error, :not_found} -> :pending
+    end
+  end
+
+  # Updates chat_entries with effective statuses from tool_invocations map
+  # This ensures the UI shows correct statuses even before reconciliation runs
+  @spec apply_effective_statuses([ChatEntry.t()], map()) :: [ChatEntry.t()]
+  defp apply_effective_statuses(chat_entries, tool_invocations) do
+    # Build a lookup from position to effective status
+    status_by_position =
+      Map.new(tool_invocations, fn {position, tool} -> {position, tool.status} end)
+
+    Enum.map(chat_entries, &apply_entry_status(&1, status_by_position))
+  end
+
+  defp apply_entry_status(%{entry_type: :tool_invocation, position: position} = entry, status_map) do
+    case Map.get(status_map, position) do
+      nil -> entry
+      effective_status -> %{entry | tool_status: effective_status}
+    end
+  end
+
+  defp apply_entry_status(entry, _status_map), do: entry
 
   # Reason: LLM Registry logging during init.
   defp log_llm_models do

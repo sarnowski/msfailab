@@ -306,6 +306,33 @@ defmodule Msfailab.TracksTest do
     end
   end
 
+  describe "update_track_memory/2" do
+    alias Msfailab.Tracks.Memory
+
+    setup [:create_workspace_and_container]
+
+    test "updates memory with a Memory struct", %{container: container} do
+      {:ok, track} = Tracks.create_track(container, @valid_attrs)
+
+      memory = %Memory{
+        objective: "Find the router",
+        focus: "Scanning network",
+        tasks: [],
+        working_notes: "Started recon"
+      }
+
+      assert {:ok, updated} = Tracks.update_track_memory(track.id, memory)
+      assert updated.memory.objective == "Find the router"
+      assert updated.memory.focus == "Scanning network"
+      assert updated.memory.working_notes == "Started recon"
+    end
+
+    test "returns error for non-existent track" do
+      memory = Memory.new()
+      assert {:error, :not_found} = Tracks.update_track_memory(999, memory)
+    end
+  end
+
   describe "slug_exists?/2" do
     setup [:create_workspace_and_container]
 

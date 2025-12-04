@@ -56,6 +56,7 @@ defmodule Msfailab.Tracks.Track do
   alias Msfailab.Tracks.ChatHistoryEntry
   alias Msfailab.Tracks.ChatHistoryLLMResponse
   alias Msfailab.Tracks.ChatHistoryTurn
+  alias Msfailab.Tracks.Memory
 
   @type t :: %__MODULE__{
           id: integer() | nil,
@@ -64,6 +65,7 @@ defmodule Msfailab.Tracks.Track do
           current_model: String.t() | nil,
           autonomous: boolean(),
           archived_at: DateTime.t() | nil,
+          memory: Memory.t() | nil,
           container_id: integer() | nil,
           container: ContainerRecord.t() | Ecto.Association.NotLoaded.t(),
           chat_turns: [ChatHistoryTurn.t()] | Ecto.Association.NotLoaded.t(),
@@ -80,6 +82,9 @@ defmodule Msfailab.Tracks.Track do
     field :current_model, :string
     field :autonomous, :boolean, default: false
     field :archived_at, :utc_datetime
+
+    # AI agent memory for maintaining context across compactions
+    embeds_one :memory, Memory, on_replace: :delete
 
     belongs_to :container, ContainerRecord
 
@@ -102,6 +107,7 @@ defmodule Msfailab.Tracks.Track do
     |> validate_required([:container_id])
     |> Slug.validate_slug(:slug)
     |> Slug.validate_name(:name)
+    |> put_default_memory()
     |> assoc_constraint(:container)
     |> unique_constraint([:container_id, :slug])
   end
@@ -123,5 +129,23 @@ defmodule Msfailab.Tracks.Track do
   def archive_changeset(track) do
     track
     |> change(archived_at: DateTime.utc_now() |> DateTime.truncate(:second))
+  end
+
+  @doc """
+  Changeset for updating track memory.
+  """
+  @spec memory_changeset(t(), Memory.t()) :: Ecto.Changeset.t()
+  def memory_changeset(track, memory) do
+    track
+    |> change()
+    |> put_embed(:memory, memory)
+  end
+
+  # Ensures memory is initialized with a default empty Memory struct
+  defp put_default_memory(changeset) do
+    case get_field(changeset, :memory) do
+      nil -> put_embed(changeset, :memory, Memory.new())
+      _ -> changeset
+    end
   end
 end

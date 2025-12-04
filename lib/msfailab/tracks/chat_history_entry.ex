@@ -176,9 +176,9 @@ defmodule Msfailab.Tracks.ChatHistoryEntry do
   alias Msfailab.Tracks.ChatToolInvocation
   alias Msfailab.Tracks.Track
 
-  @entry_types ~w(message tool_invocation console_context)
+  @entry_types ~w(message tool_invocation console_context memory)
 
-  @type entry_type :: :message | :tool_invocation | :console_context
+  @type entry_type :: :message | :tool_invocation | :console_context | :memory
 
   @type t :: %__MODULE__{
           id: integer() | nil,

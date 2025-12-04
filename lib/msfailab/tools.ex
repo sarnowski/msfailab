@@ -24,10 +24,12 @@ defmodule Msfailab.Tools do
 
   ## Available Tools
 
-  | Tool | Description | Sequential |
-  |------|-------------|------------|
-  | `msf_command` | Execute Metasploit Framework console commands | Yes |
-  | `bash_command` | Execute bash commands in the research environment | No |
+  | Tool | Mutex | Description |
+  |------|-------|-------------|
+  | `msf_command` | `:msf_console` | Execute Metasploit Framework console commands |
+  | `bash_command` | `nil` | Execute bash commands in the research environment |
+  | Memory tools | `:memory` | Agent memory operations (read, update, tasks) |
+  | MSF data tools | `nil` | Database queries (list_*, retrieve_*, create_*) |
 
   ## Tool Definition Structure
 
@@ -49,21 +51,22 @@ defmodule Msfailab.Tools do
   | `cacheable` | `boolean()` | `true` | Anthropic: Allow caching of tool definition |
   | `approval_required` | `boolean()` | `true` | Require user approval before execution |
   | `timeout` | `pos_integer() \\| nil` | `nil` | Max execution time in milliseconds |
-  | `sequential` | `boolean()` | `false` | If true, only one can execute at a time |
+  | `mutex` | `atom() \\| nil` | `nil` | Mutex group for execution ordering |
 
-  ## Sequential Execution
+  ## Mutex-Based Execution
 
-  The `sequential` flag controls execution ordering when the LLM requests
+  The `mutex` field controls execution ordering when the LLM requests
   multiple tool calls in a single response:
 
-  - **Sequential tools** (`sequential: true`): Execute one at a time in
-    position order. Required for `msf_command` because the Metasploit
-    console is single-threaded and can only process one command at a time.
+  - **Mutex groups** (e.g., `mutex: :msf_console`): Tools with the same mutex
+    execute sequentially in LLM-specified order. Required for `msf_command`
+    because the Metasploit console is single-threaded.
 
-  - **Parallel tools** (`sequential: false`): Can execute simultaneously.
-    Useful for read-only operations or independent API calls.
+  - **Parallel tools** (`mutex: nil`): Execute truly in parallel. Useful for
+    read-only database queries or independent operations.
 
-  See `Msfailab.Tools.Tool` for detailed documentation on execution modes.
+  See `Msfailab.Tools.Tool` for detailed documentation on mutex groups and
+  `Msfailab.Tools.ExecutionManager` for execution orchestration.
 
   ## Parameters JSON Schema
 
@@ -137,12 +140,12 @@ defmodule Msfailab.Tools do
 
   ## Internal Fields
 
-  The `approval_required`, `timeout`, and `sequential` fields are not sent to
-  LLM providers. They are used by TrackServer to:
+  The `approval_required`, `timeout`, and `mutex` fields are not sent to
+  LLM providers. They are used by TrackServer and ExecutionManager to:
 
   - Prompt users for confirmation before executing dangerous tools
   - Set appropriate timeouts for tool execution
-  - Schedule sequential vs parallel tool execution
+  - Schedule mutex-based sequential vs parallel tool execution
   """
 
   alias Msfailab.Tools.Tool
@@ -170,7 +173,7 @@ defmodule Msfailab.Tools do
       cacheable: true,
       approval_required: true,
       timeout: 60_000,
-      sequential: true
+      mutex: :msf_console
     },
     %Tool{
       name: "bash_command",
@@ -193,8 +196,7 @@ defmodule Msfailab.Tools do
       strict: true,
       cacheable: true,
       approval_required: true,
-      timeout: 120_000,
-      sequential: false
+      timeout: 120_000
     },
     # Database query tools - these don't require approval as they're read-only
     %Tool{
@@ -233,8 +235,7 @@ defmodule Msfailab.Tools do
       strict: false,
       cacheable: true,
       approval_required: false,
-      timeout: 30_000,
-      sequential: false
+      timeout: 30_000
     },
     %Tool{
       name: "list_services",
@@ -281,8 +282,7 @@ defmodule Msfailab.Tools do
       strict: false,
       cacheable: true,
       approval_required: false,
-      timeout: 30_000,
-      sequential: false
+      timeout: 30_000
     },
     %Tool{
       name: "list_vulns",
@@ -323,8 +323,7 @@ defmodule Msfailab.Tools do
       strict: false,
       cacheable: true,
       approval_required: false,
-      timeout: 30_000,
-      sequential: false
+      timeout: 30_000
     },
     %Tool{
       name: "list_creds",
@@ -365,8 +364,7 @@ defmodule Msfailab.Tools do
       strict: false,
       cacheable: true,
       approval_required: false,
-      timeout: 30_000,
-      sequential: false
+      timeout: 30_000
     },
     %Tool{
       name: "list_loots",
@@ -399,8 +397,7 @@ defmodule Msfailab.Tools do
       strict: false,
       cacheable: true,
       approval_required: false,
-      timeout: 30_000,
-      sequential: false
+      timeout: 30_000
     },
     %Tool{
       name: "list_notes",
@@ -437,8 +434,7 @@ defmodule Msfailab.Tools do
       strict: false,
       cacheable: true,
       approval_required: false,
-      timeout: 30_000,
-      sequential: false
+      timeout: 30_000
     },
     %Tool{
       name: "list_sessions",
@@ -471,8 +467,7 @@ defmodule Msfailab.Tools do
       strict: false,
       cacheable: true,
       approval_required: false,
-      timeout: 30_000,
-      sequential: false
+      timeout: 30_000
     },
     %Tool{
       name: "retrieve_loot",
@@ -497,8 +492,7 @@ defmodule Msfailab.Tools do
       strict: false,
       cacheable: true,
       approval_required: false,
-      timeout: 10_000,
-      sequential: false
+      timeout: 10_000
     },
     %Tool{
       name: "create_note",
@@ -542,8 +536,133 @@ defmodule Msfailab.Tools do
       strict: false,
       cacheable: true,
       approval_required: false,
-      timeout: 10_000,
-      sequential: false
+      timeout: 10_000
+    },
+    # =========================================================================
+    # Memory Tools - Agent short-term memory for maintaining context
+    # =========================================================================
+    %Tool{
+      name: "read_memory",
+      description:
+        "Read the current track memory state. Returns the agent's stored objective, focus, tasks, and working notes. " <>
+          "Use this to recall your current state after context compaction.",
+      parameters: %{
+        "type" => "object",
+        "properties" => %{},
+        "required" => [],
+        "additionalProperties" => false
+      },
+      strict: true,
+      cacheable: true,
+      approval_required: false,
+      timeout: 5_000,
+      mutex: :memory
+    },
+    %Tool{
+      name: "update_memory",
+      description:
+        "Update track memory fields. Only provided fields are updated; others are preserved. " <>
+          "Use 'objective' for your ultimate goal (rarely changes), 'focus' for current activity, " <>
+          "and 'working_notes' for temporary observations and hypotheses.",
+      parameters: %{
+        "type" => "object",
+        "properties" => %{
+          "objective" => %{
+            "type" => "string",
+            "description" =>
+              "The ultimate goal you're working toward (e.g., 'Gain domain admin access on ACME-DC01')"
+          },
+          "focus" => %{
+            "type" => "string",
+            "description" =>
+              "What you're doing right now (e.g., 'Enumerating SMB shares on 10.0.0.5')"
+          },
+          "working_notes" => %{
+            "type" => "string",
+            "description" => "Temporary observations, hypotheses, blockers (markdown supported)"
+          }
+        },
+        "required" => [],
+        "additionalProperties" => false
+      },
+      strict: false,
+      cacheable: true,
+      approval_required: false,
+      timeout: 5_000,
+      mutex: :memory
+    },
+    %Tool{
+      name: "add_task",
+      description:
+        "Add a new task to the memory task list. Tasks track planned work items with status. " <>
+          "New tasks start with 'pending' status.",
+      parameters: %{
+        "type" => "object",
+        "properties" => %{
+          "content" => %{
+            "type" => "string",
+            "description" => "Task description (e.g., 'Port scan 10.0.0.0/24')"
+          }
+        },
+        "required" => ["content"],
+        "additionalProperties" => false
+      },
+      strict: true,
+      cacheable: true,
+      approval_required: false,
+      timeout: 5_000,
+      mutex: :memory
+    },
+    %Tool{
+      name: "update_task",
+      description:
+        "Update an existing task in the memory task list. Use to change status or content.",
+      parameters: %{
+        "type" => "object",
+        "properties" => %{
+          "id" => %{
+            "type" => "string",
+            "description" => "Task ID (UUID from add_task or read_memory)"
+          },
+          "content" => %{
+            "type" => "string",
+            "description" => "New task description"
+          },
+          "status" => %{
+            "type" => "string",
+            "enum" => ["pending", "in_progress", "completed"],
+            "description" => "New task status"
+          }
+        },
+        "required" => ["id"],
+        "additionalProperties" => false
+      },
+      strict: false,
+      cacheable: true,
+      approval_required: false,
+      timeout: 5_000,
+      mutex: :memory
+    },
+    %Tool{
+      name: "remove_task",
+      description:
+        "Remove a task from the memory task list. Use when a task is no longer relevant.",
+      parameters: %{
+        "type" => "object",
+        "properties" => %{
+          "id" => %{
+            "type" => "string",
+            "description" => "Task ID (UUID from add_task or read_memory)"
+          }
+        },
+        "required" => ["id"],
+        "additionalProperties" => false
+      },
+      strict: true,
+      cacheable: true,
+      approval_required: false,
+      timeout: 5_000,
+      mutex: :memory
     }
   ]
 
@@ -554,9 +673,9 @@ defmodule Msfailab.Tools do
 
       iex> tools = Msfailab.Tools.list_tools()
       iex> length(tools)
-      11
+      16
       iex> Enum.map(tools, & &1.name) |> Enum.sort()
-      ["bash_command", "create_note", "list_creds", "list_hosts", "list_loots", "list_notes", "list_services", "list_sessions", "list_vulns", "msf_command", "retrieve_loot"]
+      ["add_task", "bash_command", "create_note", "list_creds", "list_hosts", "list_loots", "list_notes", "list_services", "list_sessions", "list_vulns", "msf_command", "read_memory", "remove_task", "retrieve_loot", "update_memory", "update_task"]
   """
   @spec list_tools() :: [Tool.t()]
   def list_tools, do: @tools
@@ -569,8 +688,8 @@ defmodule Msfailab.Tools do
       iex> {:ok, tool} = Msfailab.Tools.get_tool("msf_command")
       iex> tool.name
       "msf_command"
-      iex> tool.sequential
-      true
+      iex> tool.mutex
+      :msf_console
 
       iex> Msfailab.Tools.get_tool("nonexistent")
       {:error, :not_found}

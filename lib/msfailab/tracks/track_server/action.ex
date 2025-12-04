@@ -279,6 +279,22 @@ defmodule Msfailab.Tracks.TrackServer.Action do
   # coveralls-ignore-stop
 
   # ---------------------------------------------------------------------------
+  # Memory Actions
+  # ---------------------------------------------------------------------------
+
+  def execute({:persist_memory, memory}, state) do
+    # Persist memory to database and update state
+    case Tracks.update_track_memory(state.track_id, memory) do
+      {:ok, _track} ->
+        %{state | memory: memory}
+
+      {:error, reason} ->
+        Logger.error("Failed to persist memory: #{inspect(reason)}")
+        state
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # Control Flow Actions
   # ---------------------------------------------------------------------------
 

@@ -135,7 +135,7 @@ defmodule Msfailab.Tracks.ChatEntry do
       }
   """
 
-  @type entry_type :: :message | :tool_invocation
+  @type entry_type :: :message | :tool_invocation | :memory
   @type role :: :user | :assistant
   @type message_type :: :prompt | :thinking | :response
   @type tool_status :: :pending | :approved | :denied | :executing | :success | :error | :timeout
@@ -484,6 +484,50 @@ defmodule Msfailab.Tracks.ChatEntry do
   end
 
   # ===========================================================================
+  # Memory Entry Factory Functions
+  # ===========================================================================
+
+  @doc """
+  Creates a new ChatEntry for a memory snapshot.
+
+  Memory entries are injected at session start to provide the AI agent with
+  its current state (objective, focus, tasks, working notes). They are:
+
+  - Hidden from UI display (filtered in templates)
+  - Excluded from compaction summarization
+  - Immutable snapshots of memory at that point in time
+
+  ## Parameters
+
+  - `id` - Unique identifier
+  - `position` - Position in conversation
+  - `content` - Serialized memory content (markdown)
+  - `timestamp` - Creation time
+
+  ## Example
+
+      iex> entry = ChatEntry.memory_snapshot("uuid", 1, "## Track Memory\n...", ~U[2025-01-15 10:30:00Z])
+      iex> entry.entry_type
+      :memory
+      iex> entry.role
+      :user
+  """
+  @spec memory_snapshot(String.t() | integer(), pos_integer(), String.t(), DateTime.t()) :: t()
+  def memory_snapshot(id, position, content, timestamp \\ DateTime.utc_now()) do
+    %__MODULE__{
+      id: id,
+      position: position,
+      entry_type: :memory,
+      role: :user,
+      message_type: :prompt,
+      content: content,
+      rendered_html: nil,
+      streaming: false,
+      timestamp: timestamp
+    }
+  end
+
+  # ===========================================================================
   # Ecto Conversion Functions
   # ===========================================================================
 
@@ -577,4 +621,19 @@ defmodule Msfailab.Tracks.ChatEntry do
   @spec tool_invocation?(t()) :: boolean()
   def tool_invocation?(%__MODULE__{entry_type: :tool_invocation}), do: true
   def tool_invocation?(%__MODULE__{}), do: false
+
+  @doc """
+  Returns true if this entry is a memory snapshot entry.
+
+  Memory entries are hidden from UI display and excluded from compaction.
+
+  ## Example
+
+      iex> entry = ChatEntry.memory_snapshot("uuid", 1, "## Track Memory\n...")
+      iex> ChatEntry.memory?(entry)
+      true
+  """
+  @spec memory?(t()) :: boolean()
+  def memory?(%__MODULE__{entry_type: :memory}), do: true
+  def memory?(%__MODULE__{}), do: false
 end

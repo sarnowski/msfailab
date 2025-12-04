@@ -163,6 +163,7 @@ defmodule Msfailab.ToolsTest do
       assert tool.cacheable == true
       assert tool.approval_required == true
       assert tool.timeout == nil
+      assert tool.mutex == nil
     end
 
     test "allows overriding defaults" do
@@ -180,6 +181,70 @@ defmodule Msfailab.ToolsTest do
       assert tool.cacheable == false
       assert tool.approval_required == false
       assert tool.timeout == 30_000
+    end
+
+    test "allows setting mutex to an atom" do
+      tool = %Tool{
+        name: "test",
+        description: "A test tool",
+        parameters: %{"type" => "object", "properties" => %{}, "required" => []},
+        mutex: :test_mutex
+      }
+
+      assert tool.mutex == :test_mutex
+    end
+  end
+
+  describe "mutex assignments" do
+    test "msf_command has mutex :msf_console" do
+      {:ok, tool} = Tools.get_tool("msf_command")
+      assert tool.mutex == :msf_console
+    end
+
+    test "bash_command has mutex nil (true parallel)" do
+      {:ok, tool} = Tools.get_tool("bash_command")
+      assert tool.mutex == nil
+    end
+
+    test "memory tools have mutex :memory" do
+      memory_tools = ["read_memory", "update_memory", "add_task", "update_task", "remove_task"]
+
+      for name <- memory_tools do
+        {:ok, tool} = Tools.get_tool(name)
+
+        assert tool.mutex == :memory,
+               "Expected #{name} to have mutex :memory, got #{inspect(tool.mutex)}"
+      end
+    end
+
+    test "msf_data query tools have mutex nil (true parallel)" do
+      msf_data_tools = [
+        "list_hosts",
+        "list_services",
+        "list_vulns",
+        "list_creds",
+        "list_loots",
+        "list_notes",
+        "list_sessions",
+        "retrieve_loot",
+        "create_note"
+      ]
+
+      for name <- msf_data_tools do
+        {:ok, tool} = Tools.get_tool(name)
+
+        assert tool.mutex == nil,
+               "Expected #{name} to have mutex nil, got #{inspect(tool.mutex)}"
+      end
+    end
+
+    test "all tools have mutex field (atom or nil)" do
+      tools = Tools.list_tools()
+
+      for tool <- tools do
+        assert is_nil(tool.mutex) or is_atom(tool.mutex),
+               "Tool #{tool.name} has invalid mutex: #{inspect(tool.mutex)}"
+      end
     end
   end
 end

@@ -40,53 +40,44 @@ defmodule Msfailab.Tools.Tool do
   | `cacheable` | `boolean()` | `true` | Anthropic: Allow caching of tool definition |
   | `approval_required` | `boolean()` | `true` | Require user approval before execution |
   | `timeout` | `pos_integer() \\| nil` | `nil` | Max execution time in milliseconds |
-  | `sequential` | `boolean()` | `false` | If true, only one instance can execute at a time |
+  | `mutex` | `atom() \\| nil` | `nil` | Mutex group - tools with same mutex execute sequentially |
 
-  ## Sequential vs Parallel Execution
+  ## Mutex-Based Execution Grouping
 
-  The `sequential` flag controls how multiple tool invocations are executed:
+  The `mutex` field controls how multiple tool invocations are executed:
 
   ```
   ┌─────────────────────────────────────────────────────────────────────┐
-  │                     Tool Execution Modes                            │
+  │                     Tool Execution with Mutex Groups                │
   ├─────────────────────────────────────────────────────────────────────┤
   │                                                                     │
-  │  Sequential (sequential: true)        Parallel (sequential: false)  │
-  │  ─────────────────────────────        ────────────────────────────  │
+  │  mutex: :msf_console           mutex: nil (true parallel)           │
+  │  ────────────────────          ────────────────────────────         │
   │                                                                     │
-  │  Tool 1 ──────►                       Tool 1 ──────►                │
-  │                Tool 2 ──────►         Tool 2 ──────►                │
-  │                              Tool 3   Tool 3 ──────►                │
+  │  cmd1 ──────►                  list_hosts ──────►                   │
+  │              cmd2 ──────►      list_services ──────►                │
+  │                       cmd3     bash_command ──────►                 │
   │                                                                     │
-  │  • One at a time                      • All at once                 │
-  │  • Position order                     • Immediate execution         │
-  │  • Wait for completion                • Parallel completion         │
+  │  • Sequential within group     • True parallel execution            │
+  │  • LLM-specified order         • Independent Tasks                  │
+  │  • Shared resource access      • No blocking                        │
   │                                                                     │
   └─────────────────────────────────────────────────────────────────────┘
   ```
 
-  ### Sequential Tools
+  ### Mutex Groups
 
-  Sequential tools (`sequential: true`) execute one at a time in position order.
-  This is required for tools that:
+  Tools with the same `mutex` value execute sequentially in LLM-specified order.
+  Tools with `mutex: nil` execute truly in parallel.
 
-  - Use a shared resource (e.g., Metasploit console is single-threaded)
-  - Have side effects that affect subsequent calls
-  - Require exclusive access to a system
+  | Mutex | Tools | Rationale |
+  |-------|-------|-----------|
+  | `:msf_console` | `msf_command` | Metasploit console is single-threaded |
+  | `:memory` | `read_memory`, `update_memory`, `add_task`, `update_task`, `remove_task` | Must accumulate changes sequentially |
+  | `nil` | `bash_command`, `list_*`, `retrieve_loot`, `create_note` | True parallel execution |
 
-  Example: `msf_command` is sequential because the Metasploit console can only
-  process one command at a time.
-
-  ### Parallel Tools (Future)
-
-  Parallel tools (`sequential: false`) can execute simultaneously. Useful for:
-
-  - Read-only operations
-  - Independent API calls
-  - File system queries
-
-  The reconciliation engine in TrackServer handles the scheduling based on
-  this flag. See `Msfailab.Tracks.TrackServer` for execution details.
+  The ExecutionManager handles the scheduling based on mutex groups.
+  See `Msfailab.Tools.ExecutionManager` for execution details.
   """
 
   @type t :: %__MODULE__{
@@ -97,7 +88,7 @@ defmodule Msfailab.Tools.Tool do
           cacheable: boolean(),
           approval_required: boolean(),
           timeout: pos_integer() | nil,
-          sequential: boolean()
+          mutex: atom() | nil
         }
 
   @enforce_keys [:name, :description, :parameters]
@@ -106,9 +97,9 @@ defmodule Msfailab.Tools.Tool do
     :description,
     :parameters,
     :timeout,
+    :mutex,
     strict: false,
     cacheable: true,
-    approval_required: true,
-    sequential: false
+    approval_required: true
   ]
 end

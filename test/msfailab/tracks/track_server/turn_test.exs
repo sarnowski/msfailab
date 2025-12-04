@@ -215,28 +215,11 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
       assert {:send_bash_command, 2, "echo hi"} in actions
     end
 
-    test "does not execute when console busy" do
-      tool_inv = make_tool_invocation("call_1", "msf_command", :approved)
-
-      turn = make_turn(status: :executing_tools, tool_invocations: %{1 => tool_inv})
-      console = make_console(status: :busy)
-      context = %{track_id: 1, model: "test", autonomous: false}
-
-      assert :no_action = Turn.reconcile(turn, console, [], context)
-    end
-
-    test "does not execute when another sequential tool is executing" do
-      executing = make_tool_invocation("call_1", "msf_command", :executing)
-      approved = make_tool_invocation("call_2", "msf_command", :approved)
-
-      turn =
-        make_turn(status: :executing_tools, tool_invocations: %{1 => executing, 2 => approved})
-
-      console = make_console(status: :ready)
-      context = %{track_id: 1, model: "test", autonomous: false}
-
-      assert :no_action = Turn.reconcile(turn, console, [], context)
-    end
+    # Note: Turn no longer blocks execution based on console status or other
+    # executing tools. ContainerExecutor handles console readiness via retries,
+    # and ExecutionManager handles sequential ordering via mutex groups.
+    # Tests for these behaviors belong in container_executor_test.exs and
+    # execution_manager_test.exs respectively.
   end
 
   describe "reconcile/4 - turn completion" do
@@ -880,6 +863,284 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
       # Entries must be preserved, not wiped out
       assert length(returned_entries) == 3
       assert returned_entries == existing_entries
+    end
+  end
+
+  # ===========================================================================
+  # Approved Tools Execute While Others Pending
+  # ===========================================================================
+
+  describe "reconcile/4 - approved tools execute while others pending" do
+    alias Msfailab.Tracks
+
+    # Helper to create a track for memory tool tests
+    defp create_track_for_memory_test do
+      unique = System.unique_integer([:positive])
+
+      {:ok, workspace} =
+        Msfailab.Workspaces.create_workspace(%{slug: "test-#{unique}", name: "Test #{unique}"})
+
+      {:ok, container} =
+        Msfailab.Containers.create_container(workspace, %{
+          slug: "container-#{unique}",
+          name: "Container #{unique}",
+          docker_image: "test:latest"
+        })
+
+      {:ok, track} =
+        Tracks.create_track(container, %{
+          name: "Track #{unique}",
+          slug: "track-#{unique}"
+        })
+
+      track
+    end
+
+    test "executes approved parallel tools from :streaming status when others are pending" do
+      # Bug: When LLM stream completes with tool_use, status is :streaming.
+      # Approved parallel tools should execute immediately, even if some tools
+      # need approval. Previously, should_execute_parallel_tools? only allowed
+      # :pending_approval and :executing_tools, blocking execution from :streaming.
+
+      track = create_track_for_memory_test()
+
+      update_memory_inv =
+        make_tool_invocation("call_1", "update_memory", :approved,
+          arguments: %{"objective" => "Find the router"}
+        )
+
+      bash_inv =
+        make_tool_invocation("call_2", "bash_command", :pending,
+          arguments: %{"command" => "nmap 192.168.1.1"}
+        )
+
+      # Key: status is :streaming (as it would be when LLM stream completes)
+      turn =
+        make_turn(
+          status: :streaming,
+          model: "gpt-4",
+          tool_invocations: %{
+            1 => update_memory_inv,
+            2 => bash_inv
+          }
+        )
+
+      console = make_console()
+
+      entries = [
+        make_tool_entry(1, 1, "update_memory", :approved,
+          tool_call_id: "call_1",
+          arguments: %{"objective" => "Find the router"}
+        ),
+        make_tool_entry(2, 2, "bash_command", :pending,
+          tool_call_id: "call_2",
+          arguments: %{"command" => "nmap 192.168.1.1"}
+        )
+      ]
+
+      context = %{
+        track_id: track.id,
+        model: "gpt-4",
+        autonomous: false
+      }
+
+      # The approved update_memory should execute even from :streaming status
+      result = Turn.reconcile(turn, console, entries, context)
+
+      # Should return updated turn (memory tool executed synchronously)
+      assert {new_turn, _entries, actions} = result
+
+      # Tool should be marked as success
+      assert new_turn.tool_invocations[1].status == :success
+
+      # Memory should be persisted to DB (not passed through return value)
+      updated_track = Tracks.get_track(track.id)
+      assert updated_track.memory.objective == "Find the router"
+
+      # Should have update_tool_status action with success
+      assert Enum.any?(actions, fn
+               {:update_tool_status, 1, "success", _} -> true
+               _ -> false
+             end)
+    end
+
+    test "executes approved parallel tools even when other tools are pending approval" do
+      # Set up: update_memory is approved (doesn't need approval)
+      #         bash_command is pending (needs approval)
+
+      track = create_track_for_memory_test()
+
+      update_memory_inv =
+        make_tool_invocation("call_1", "update_memory", :approved,
+          arguments: %{"objective" => "Find the router"}
+        )
+
+      bash_inv =
+        make_tool_invocation("call_2", "bash_command", :pending,
+          arguments: %{"command" => "nmap 192.168.1.1"}
+        )
+
+      turn =
+        make_turn(
+          status: :executing_tools,
+          model: "gpt-4",
+          tool_invocations: %{
+            1 => update_memory_inv,
+            2 => bash_inv
+          }
+        )
+
+      console = make_console()
+
+      entries = [
+        make_tool_entry(1, 1, "update_memory", :approved,
+          tool_call_id: "call_1",
+          arguments: %{"objective" => "Find the router"}
+        ),
+        make_tool_entry(2, 2, "bash_command", :pending,
+          tool_call_id: "call_2",
+          arguments: %{"command" => "nmap 192.168.1.1"}
+        )
+      ]
+
+      context = %{
+        track_id: track.id,
+        model: "gpt-4",
+        autonomous: false
+      }
+
+      # The approved update_memory should execute even though bash_command is pending
+      result = Turn.reconcile(turn, console, entries, context)
+
+      # Should return updated turn (memory tool executed synchronously)
+      assert {new_turn, _entries, actions} = result
+
+      # Tool should be marked as success
+      assert new_turn.tool_invocations[1].status == :success
+
+      # Memory should be persisted to DB
+      updated_track = Tracks.get_track(track.id)
+      assert updated_track.memory.objective == "Find the router"
+
+      # Should have update_tool_status action with success
+      assert Enum.any?(actions, fn
+               {:update_tool_status, 1, "success", _} -> true
+               _ -> false
+             end)
+    end
+  end
+
+  # ===========================================================================
+  # Memory Tool Accumulation Tests
+  # ===========================================================================
+
+  describe "reconcile/4 - memory tool accumulation" do
+    alias Msfailab.Tracks
+
+    # Memory tools now have :memory mutex and execute sequentially,
+    # which ensures they see each other's DB writes. This test verifies
+    # the final memory state after all tools complete.
+
+    # Helper to create a track for memory tool tests
+    defp create_track_for_accumulation_test do
+      unique = System.unique_integer([:positive])
+
+      {:ok, workspace} =
+        Msfailab.Workspaces.create_workspace(%{slug: "test-#{unique}", name: "Test #{unique}"})
+
+      {:ok, container} =
+        Msfailab.Containers.create_container(workspace, %{
+          slug: "container-#{unique}",
+          name: "Container #{unique}",
+          docker_image: "test:latest"
+        })
+
+      {:ok, track} =
+        Tracks.create_track(container, %{
+          name: "Track #{unique}",
+          slug: "track-#{unique}"
+        })
+
+      track
+    end
+
+    test "accumulates memory state across multiple parallel memory tools" do
+      track = create_track_for_accumulation_test()
+
+      # Set up turn with update_memory + 2 add_task tools, all approved
+      update_memory_inv =
+        make_tool_invocation("call_1", "update_memory", :approved,
+          arguments: %{"objective" => "Find the router", "focus" => "Network scan"}
+        )
+
+      add_task_inv_1 =
+        make_tool_invocation("call_2", "add_task", :approved,
+          arguments: %{"content" => "Run port scan"}
+        )
+
+      add_task_inv_2 =
+        make_tool_invocation("call_3", "add_task", :approved,
+          arguments: %{"content" => "Check web interface"}
+        )
+
+      turn =
+        make_turn(
+          status: :executing_tools,
+          model: "gpt-4",
+          tool_invocations: %{
+            1 => update_memory_inv,
+            2 => add_task_inv_1,
+            3 => add_task_inv_2
+          }
+        )
+
+      console = make_console()
+
+      entries = [
+        make_tool_entry(1, 1, "update_memory", :approved,
+          tool_call_id: "call_1",
+          arguments: %{"objective" => "Find the router", "focus" => "Network scan"}
+        ),
+        make_tool_entry(2, 2, "add_task", :approved,
+          tool_call_id: "call_2",
+          arguments: %{"content" => "Run port scan"}
+        ),
+        make_tool_entry(3, 3, "add_task", :approved,
+          tool_call_id: "call_3",
+          arguments: %{"content" => "Check web interface"}
+        )
+      ]
+
+      context = %{
+        track_id: track.id,
+        model: "gpt-4",
+        autonomous: false
+      }
+
+      # Execute reconcile - should process all three memory tools
+      result = Turn.reconcile(turn, console, entries, context)
+
+      # Should return updated turn (memory persisted to DB)
+      assert {new_turn, _entries, _actions} = result
+
+      # All tools should be marked as success
+      assert new_turn.tool_invocations[1].status == :success
+      assert new_turn.tool_invocations[2].status == :success
+      assert new_turn.tool_invocations[3].status == :success
+
+      # The final memory in DB should have ACCUMULATED all changes:
+      # - objective and focus from update_memory
+      # - BOTH tasks from add_task calls
+      updated_track = Tracks.get_track(track.id)
+      final_memory = updated_track.memory
+
+      assert final_memory.objective == "Find the router"
+      assert final_memory.focus == "Network scan"
+      assert length(final_memory.tasks) == 2
+
+      task_contents = Enum.map(final_memory.tasks, & &1.content)
+      assert "Run port scan" in task_contents
+      assert "Check web interface" in task_contents
     end
   end
 end

@@ -44,13 +44,13 @@ defmodule Msfailab.Tools.MsfDataExecutor do
       end
   """
 
+  @behaviour Msfailab.Tools.Executor
+
   alias Msfailab.MsfData
 
   @msf_data_tools ~w(list_hosts list_services list_vulns list_creds list_loots list_notes list_sessions retrieve_loot create_note)
 
-  @doc """
-  Returns true if the tool is handled by this executor.
-  """
+  @impl true
   @spec handles_tool?(String.t()) :: boolean()
   def handles_tool?(tool_name), do: tool_name in @msf_data_tools
 
@@ -68,6 +68,7 @@ defmodule Msfailab.Tools.MsfDataExecutor do
   - `{:ok, result}` on success - result is JSON-serializable
   - `{:error, reason}` on failure
   """
+  @impl true
   @spec execute(String.t(), map(), map()) :: {:ok, map()} | {:error, term()}
 
   def execute("list_hosts", args, %{workspace_slug: workspace_slug}) do

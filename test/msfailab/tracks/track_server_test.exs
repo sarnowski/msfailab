@@ -681,6 +681,116 @@ defmodule Msfailab.Tracks.TrackServerTest do
       # Server is running
       assert Process.alive?(TrackServer.whereis(track.id))
     end
+
+    test "auto-approves pending tools that don't require approval on load", %{
+      track: track,
+      workspace: _workspace
+    } do
+      alias Msfailab.Tracks.ChatContext
+
+      # 1. Stop the server so we can insert data before restart
+      Tracks.stop_track_server(track.id)
+      wait_until(fn -> TrackServer.whereis(track.id) == nil end, 100)
+
+      # 2. Create a turn and tool invocation with "pending" status in DB
+      # update_memory has approval_required: false
+      {:ok, turn} = ChatContext.create_turn(track.id, "gpt-4o")
+
+      {:ok, _entry} =
+        ChatContext.create_tool_invocation_entry(track.id, turn.id, nil, 1, %{
+          tool_call_id: "call_test_123",
+          tool_name: "update_memory",
+          arguments: %{"objective" => "Test objective"},
+          console_prompt: "msf6 > "
+        })
+
+      # 3. Restart the server - it should load the pending tool and auto-approve it
+      track_with_assocs = Tracks.get_track(track.id) |> Repo.preload(container: :workspace)
+      {:ok, _pid} = Tracks.start_track_server(track_with_assocs)
+
+      Process.sleep(50)
+
+      # 4. Verify the tool shows as :approved (not :pending) in chat state
+      chat_state = TrackServer.get_chat_state(track.id)
+
+      # Find the tool invocation entry
+      tool_entry = Enum.find(chat_state.entries, &(&1.entry_type == :tool_invocation))
+
+      assert tool_entry != nil, "Expected to find tool invocation entry"
+      assert tool_entry.tool_name == "update_memory"
+
+      # The key assertion: pending tool that doesn't require approval should be auto-approved
+      # and possibly already executed (reconciliation happens on init)
+      assert tool_entry.tool_status in [:approved, :success],
+             "Expected :approved or :success but got #{inspect(tool_entry.tool_status)}"
+    end
+
+    test "get_chat_state returns effective status for auto-approve tools (not DB status)", %{
+      track: track,
+      workspace: _workspace
+    } do
+      alias Msfailab.Tracks.ChatContext
+
+      # 1. Stop the server so we can insert data before restart
+      Tracks.stop_track_server(track.id)
+      wait_until(fn -> TrackServer.whereis(track.id) == nil end, 100)
+
+      # 2. Create a turn and TWO tool invocations in DB:
+      # - update_memory: approval_required=false, should show as :approved
+      # - bash_command: approval_required=true, should show as :pending
+      {:ok, turn} = ChatContext.create_turn(track.id, "gpt-4o")
+
+      {:ok, _entry1} =
+        ChatContext.create_tool_invocation_entry(track.id, turn.id, nil, 1, %{
+          tool_call_id: "call_auto_approve_123",
+          tool_name: "update_memory",
+          arguments: %{"objective" => "Test objective"},
+          console_prompt: "msf6 > "
+        })
+
+      {:ok, _entry2} =
+        ChatContext.create_tool_invocation_entry(track.id, turn.id, nil, 2, %{
+          tool_call_id: "call_needs_approval_456",
+          tool_name: "bash_command",
+          arguments: %{"command" => "echo test"},
+          console_prompt: "msf6 > "
+        })
+
+      # 3. Start the server - it should load and calculate effective statuses
+      track_with_assocs = Tracks.get_track(track.id) |> Repo.preload(container: :workspace)
+      {:ok, _pid} = Tracks.start_track_server(track_with_assocs)
+
+      # 4. NO sleep - we want to test immediate state after init
+      # The chat_entries should have effective statuses even before reconciliation
+
+      # 5. Get the chat state
+      chat_state = TrackServer.get_chat_state(track.id)
+
+      # Find both tool invocation entries
+      memory_tool =
+        Enum.find(
+          chat_state.entries,
+          &(&1.entry_type == :tool_invocation and &1.tool_name == "update_memory")
+        )
+
+      bash_tool =
+        Enum.find(
+          chat_state.entries,
+          &(&1.entry_type == :tool_invocation and &1.tool_name == "bash_command")
+        )
+
+      assert memory_tool != nil, "Expected to find update_memory entry"
+      assert bash_tool != nil, "Expected to find bash_command entry"
+
+      # The key assertions:
+      # update_memory: should be :approved or :success (auto-approved, may have executed)
+      # bash_command: should be :pending (requires approval)
+      assert memory_tool.tool_status in [:approved, :success],
+             "update_memory should be :approved or :success but got #{inspect(memory_tool.tool_status)}"
+
+      assert bash_tool.tool_status == :pending,
+             "bash_command should be :pending but got #{inspect(bash_tool.tool_status)}"
+    end
   end
 
   # ===========================================================================
