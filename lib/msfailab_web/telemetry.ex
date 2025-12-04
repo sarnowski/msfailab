@@ -14,6 +14,9 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+# coveralls-ignore-start
+# Reason: Phoenix framework boilerplate - pure telemetry configuration, no business logic
+
 defmodule MsfailabWeb.Telemetry do
   @moduledoc """
   Telemetry supervisor for application metrics and monitoring.
@@ -116,3 +119,5 @@ defmodule MsfailabWeb.Telemetry do
     ]
   end
 end
+
+# coveralls-ignore-stop

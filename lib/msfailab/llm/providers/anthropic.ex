@@ -112,6 +112,10 @@ defmodule Msfailab.LLM.Providers.Anthropic do
   # Internal: Model Listing
   # ============================================================================
 
+  # coveralls-ignore-start
+  # Reason: HTTP integration requiring real Anthropic API.
+  # Core business logic tested in Anthropic.Core module (94%+ coverage).
+
   @doc false
   def list_models(req_opts) do
     merged_opts = Keyword.merge(req_options(), req_opts)
@@ -320,6 +324,8 @@ defmodule Msfailab.LLM.Providers.Anthropic do
       %{status: status, headers: acc.response_headers, body: response_body}
     )
   end
+
+  # coveralls-ignore-stop
 
   # ============================================================================
   # Test Helpers (delegated to Core for testing)

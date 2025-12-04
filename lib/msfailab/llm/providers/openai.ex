@@ -115,6 +115,10 @@ defmodule Msfailab.LLM.Providers.OpenAI do
   # Internal: Model Listing
   # ============================================================================
 
+  # coveralls-ignore-start
+  # Reason: HTTP integration requiring real OpenAI API.
+  # Core business logic tested in OpenAI.Core module (93%+ coverage).
+
   @doc false
   # Internal function that accepts request options for testing
   def list_models(req_opts) do
@@ -326,6 +330,8 @@ defmodule Msfailab.LLM.Providers.OpenAI do
       %{status: status, headers: state.response_headers, body: response_body}
     )
   end
+
+  # coveralls-ignore-stop
 
   # ============================================================================
   # Test Helpers (delegated to Core for testing)

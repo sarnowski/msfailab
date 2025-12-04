@@ -14,6 +14,9 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+# coveralls-ignore-start
+# Reason: Pure OTP supervision glue code, no business logic to test
+
 defmodule Msfailab.LLM.Supervisor do
   @moduledoc """
   Supervisor for LLM subsystem.
@@ -41,3 +44,5 @@ defmodule Msfailab.LLM.Supervisor do
     Supervisor.init(children, strategy: :one_for_one)
   end
 end
+
+# coveralls-ignore-stop

@@ -15,6 +15,8 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 defmodule MsfailabWeb.Console do
+  alias MsfailabWeb.Console.PromptFormatter
+
   @moduledoc """
   Renders Metasploit console output with syntax highlighting.
 
@@ -195,45 +197,17 @@ defmodule MsfailabWeb.Console do
   # Format prompt parts with MSF-specific styling
   # Pattern: "msf6 exploit(unix/http/foo) > " or "msf6 > "
   defp format_prompt_parts(prompt) do
-    # Parse the prompt into parts and style them
+    # Parse the prompt into parts and style them using PromptFormatter
+    escape_fn = fn text ->
+      {:safe, escaped} = Phoenix.HTML.html_escape(text)
+      {:safe, escaped}
+    end
+
     prompt
-    |> parse_prompt_tokens()
-    |> Enum.map_join(&render_prompt_token/1)
+    |> PromptFormatter.parse_prompt_tokens()
+    |> Enum.map_join(&PromptFormatter.render_token(&1, escape_fn))
     |> wrap_bold()
   end
-
-  # Tokenize prompt into {:text, str}, {:msf, str}, {:paren_content, str} tokens
-  # Parentheses are kept as plain text, only inner content is colored
-  defp parse_prompt_tokens(prompt) do
-    # Regex to match: "msf" prefix, open paren, paren content, close paren, or other text
-    ~r/(msf)|(\()|(\))|([^()]+)/
-    |> Regex.scan(prompt, capture: :all_but_first)
-    |> List.flatten()
-    |> Enum.reject(&(&1 == ""))
-    |> classify_tokens([])
-  end
-
-  # State machine to track when we're inside parentheses
-  defp classify_tokens([], acc), do: Enum.reverse(acc)
-  defp classify_tokens(["msf" | rest], acc), do: classify_tokens(rest, [{:msf, "msf"} | acc])
-  defp classify_tokens(["(" | rest], acc), do: classify_paren_content(rest, acc)
-  defp classify_tokens([text | rest], acc), do: classify_tokens(rest, [{:text, text} | acc])
-
-  # Inside parentheses: content is colored, parens are plain
-  defp classify_paren_content([], acc), do: Enum.reverse(acc)
-
-  defp classify_paren_content([")" | rest], acc),
-    do: classify_tokens(rest, [{:text, ")"} | acc])
-
-  defp classify_paren_content([content | rest], acc),
-    do: classify_paren_content(rest, [{:paren_content, content}, {:text, "("} | acc])
-
-  defp render_prompt_token({:msf, text}), do: "<u>#{escape(text)}</u>"
-
-  defp render_prompt_token({:paren_content, text}),
-    do: ~s(<span class="text-error">#{escape(text)}</span>)
-
-  defp render_prompt_token({:text, text}), do: escape(text)
 
   defp wrap_bold(html), do: "<strong>#{html}</strong>"
 

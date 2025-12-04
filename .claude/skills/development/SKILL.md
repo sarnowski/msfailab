@@ -126,11 +126,33 @@ User asks: "Add name validation to containers"
 
 This detailed list survives compaction and ensures complete implementation.
 
-## Before You Write Any Code
+## ⚠️ REQUIRED: Read TESTING.md First
 
-1. **Read `/TESTING.md`** - Contains project-specific patterns, coverage targets, and examples
-2. **Understand the change** - What behavior are you adding, modifying, or removing?
-3. **Identify the test location** - Core module unit test? Context integration test? LiveView test?
+**You MUST read `/TESTING.md` before writing any test code.** It contains critical guidance on:
+- Writing testable code (Core Module Pattern, injectable time sources)
+- Coverage exclusion rules (what can/cannot be ignored)
+- LiveView and GenServer testing patterns
+- Timing-related code patterns
+
+Skipping this step leads to poorly structured tests and coverage issues.
+
+### Quick Reference (from TESTING.md)
+
+| Rule | Description |
+|------|-------------|
+| Every public function | Must have at least one test |
+| Every pattern clause | Each `def` clause must be exercised |
+| Every event handler | LiveView/GenServer handlers need tests |
+| Test behavior, not implementation | Assert on outcomes, not exact messages or CSS |
+| Core Module Pattern | Extract complex logic from GenServers/LiveViews to pure-function Core modules |
+
+**Coverage targets:** 95%+ overall, 95%+ Core modules, 90%+ Context/LiveView, 85%+ GenServers
+
+### Before Writing Code
+
+1. **Read `/TESTING.md`** — Seriously, do it
+2. **Understand the change** — What behavior are you adding, modifying, or removing?
+3. **Identify the test location** — Core module unit test? Context integration test? LiveView test?
 
 ## The TDD Cycle
 

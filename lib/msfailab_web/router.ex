@@ -56,6 +56,8 @@ defmodule MsfailabWeb.Router do
   # end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
+  # coveralls-ignore-start
+  # Reason: Development-only routes not used in test environment
   if Application.compile_env(:msfailab, :dev_routes) do
     # If you want to use the LiveDashboard in production, you should put
     # it behind authentication and allow only admins to access it.
@@ -71,4 +73,6 @@ defmodule MsfailabWeb.Router do
       forward "/mailbox", Plug.Swoosh.MailboxPreview
     end
   end
+
+  # coveralls-ignore-stop
 end

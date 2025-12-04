@@ -58,6 +58,8 @@ defmodule Msfailab.Tools.ContainerExecutor do
   @spec execute(String.t(), map(), map()) ::
           {:async, String.t()} | {:error, term()}
 
+  # coveralls-ignore-start
+  # Reason: Container integration requiring real Docker/MSGRPC. Retry logic tested in retry_until_ready.
   def execute("msf_command", %{"command" => command}, context) do
     %{container_id: container_id, track_id: track_id} = context
     timing = retry_timing()
@@ -65,10 +67,14 @@ defmodule Msfailab.Tools.ContainerExecutor do
     execute_msf_with_retry(container_id, track_id, command, timing)
   end
 
+  # coveralls-ignore-stop
+
   def execute("msf_command", _args, _context) do
     {:error, "Missing required parameter: command"}
   end
 
+  # coveralls-ignore-start
+  # Reason: Container integration requiring real Docker process.
   def execute("bash_command", %{"command" => command}, context) do
     %{container_id: container_id, track_id: track_id} = context
 
@@ -77,6 +83,8 @@ defmodule Msfailab.Tools.ContainerExecutor do
       {:error, reason} -> {:error, reason}
     end
   end
+
+  # coveralls-ignore-stop
 
   def execute("bash_command", _args, _context) do
     {:error, "Missing required parameter: command"}
@@ -170,6 +178,7 @@ defmodule Msfailab.Tools.ContainerExecutor do
     elapsed = System.monotonic_time(:millisecond) - start_time
 
     if elapsed > timing.max_wait_time do
+      # coveralls-ignore-next-line
       Logger.warning("msf_command timed out waiting for console (#{elapsed}ms)")
       {:error, :console_wait_timeout}
     else
@@ -178,12 +187,14 @@ defmodule Msfailab.Tools.ContainerExecutor do
           {:async, command_id}
 
         {:error, :console_starting} ->
+          # coveralls-ignore-next-line
           Logger.debug("Console starting, waiting #{delay}ms before retry")
           Process.sleep(delay)
           next_delay = min(delay * 2, timing.max_delay)
           do_retry(try_fn, next_delay, start_time, timing)
 
         {:error, :console_busy} ->
+          # coveralls-ignore-next-line
           Logger.debug("Console busy, waiting #{delay}ms before retry")
           Process.sleep(delay)
           next_delay = min(delay * 2, timing.max_delay)

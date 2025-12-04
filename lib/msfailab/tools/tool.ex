@@ -14,6 +14,8 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+# coveralls-ignore-start
+# Reason: Pure struct definition, no executable code
 defmodule Msfailab.Tools.Tool do
   @moduledoc """
   Struct representing a tool definition for LLM function calling.
@@ -103,3 +105,5 @@ defmodule Msfailab.Tools.Tool do
     approval_required: true
   ]
 end
+
+# coveralls-ignore-stop

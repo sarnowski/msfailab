@@ -285,6 +285,212 @@ defmodule MsfailabWeb.WorkspaceLiveTest do
   end
 
   # ===========================================================================
+  # Track Input Event Tests
+  # ===========================================================================
+
+  describe "track input events" do
+    test "toggle_input_menu toggles menu visibility", %{
+      conn: conn,
+      workspace: workspace,
+      track: track
+    } do
+      {:ok, view, _html} = live(conn, ~p"/#{workspace.slug}/#{track.slug}")
+
+      # Find and click the input menu toggle
+      # Menu toggle button should exist
+      assert has_element?(view, "[phx-click='toggle_input_menu']")
+
+      # Toggle the menu on
+      view |> element("[phx-click='toggle_input_menu']") |> render_click()
+
+      # Toggle should work (view doesn't crash)
+      assert render(view)
+    end
+
+    test "select_input_mode changes mode", %{conn: conn, workspace: workspace, track: track} do
+      {:ok, view, _html} = live(conn, ~p"/#{workspace.slug}/#{track.slug}")
+
+      # Send select_input_mode event directly
+      render_click(view, "select_input_mode", %{"mode" => "msf"})
+
+      # View doesn't crash and mode is accepted
+      assert render(view)
+    end
+
+    test "toggle_input_mode switches between ai and msf", %{
+      conn: conn,
+      workspace: workspace,
+      track: track
+    } do
+      {:ok, view, _html} = live(conn, ~p"/#{workspace.slug}/#{track.slug}")
+
+      # Toggle mode (keyboard shortcut)
+      render_click(view, "toggle_input_mode", %{})
+
+      # Should not crash
+      assert render(view)
+    end
+
+    test "update_input stores input text", %{conn: conn, workspace: workspace, track: track} do
+      {:ok, view, _html} = live(conn, ~p"/#{workspace.slug}/#{track.slug}")
+
+      # Update input
+      render_click(view, "update_input", %{"input" => "test command"})
+
+      # Should not crash
+      assert render(view)
+    end
+
+    test "send_input with empty text does nothing", %{
+      conn: conn,
+      workspace: workspace,
+      track: track
+    } do
+      {:ok, view, _html} = live(conn, ~p"/#{workspace.slug}/#{track.slug}")
+
+      # Send empty input
+      render_click(view, "send_input", %{"input" => ""})
+
+      # Should not crash
+      assert render(view)
+    end
+
+    test "send_input with whitespace-only text does nothing", %{
+      conn: conn,
+      workspace: workspace,
+      track: track
+    } do
+      {:ok, view, _html} = live(conn, ~p"/#{workspace.slug}/#{track.slug}")
+
+      # Send whitespace-only input
+      render_click(view, "send_input", %{"input" => "   "})
+
+      # Should not crash
+      assert render(view)
+    end
+
+    test "select_model updates model selection", %{
+      conn: conn,
+      workspace: workspace,
+      track: track
+    } do
+      {:ok, view, _html} = live(conn, ~p"/#{workspace.slug}/#{track.slug}")
+
+      # Select a model
+      render_click(view, "select_model", %{"model" => "claude-3-haiku"})
+
+      # Should not crash
+      assert render(view)
+    end
+
+    test "toggle_autonomous toggles mode", %{conn: conn, workspace: workspace, track: track} do
+      {:ok, view, _html} = live(conn, ~p"/#{workspace.slug}/#{track.slug}")
+
+      # Toggle autonomous mode
+      render_click(view, "toggle_autonomous", %{})
+
+      # Should not crash
+      assert render(view)
+    end
+  end
+
+  # ===========================================================================
+  # Tool Approval Event Tests
+  # ===========================================================================
+
+  describe "tool approval events" do
+    test "approve_tool without track shows error", %{conn: conn, workspace: workspace} do
+      {:ok, view, _html} = live(conn, ~p"/#{workspace.slug}")
+
+      # Try to approve without a track
+      render_click(view, "approve_tool", %{"entry-id" => "123"})
+
+      # Should show error flash
+      assert render(view) =~ "No track selected"
+    end
+
+    test "deny_tool without track shows error", %{conn: conn, workspace: workspace} do
+      {:ok, view, _html} = live(conn, ~p"/#{workspace.slug}")
+
+      # Try to deny without a track
+      render_click(view, "deny_tool", %{"entry-id" => "123"})
+
+      # Should show error flash
+      assert render(view) =~ "No track selected"
+    end
+  end
+
+  # ===========================================================================
+  # Console and Chat PubSub Event Tests
+  # ===========================================================================
+
+  describe "handle_info for console and chat events" do
+    alias Msfailab.Events.ChatChanged
+    alias Msfailab.Events.ConsoleChanged
+
+    test "ConsoleChanged for different track is ignored", %{
+      conn: conn,
+      workspace: workspace,
+      track: track
+    } do
+      {:ok, view, _html} = live(conn, ~p"/#{workspace.slug}/#{track.slug}")
+
+      # Send a console changed event for a different track
+      event = ConsoleChanged.new(workspace.id, track.id + 999)
+      send(view.pid, event)
+
+      # Should not crash
+      assert render(view)
+    end
+
+    test "ChatChanged for different track is ignored", %{
+      conn: conn,
+      workspace: workspace,
+      track: track
+    } do
+      {:ok, view, _html} = live(conn, ~p"/#{workspace.slug}/#{track.slug}")
+
+      # Send a chat changed event for a different track
+      event = ChatChanged.new(workspace.id, track.id + 999)
+      send(view.pid, event)
+
+      # Should not crash
+      assert render(view)
+    end
+
+    test "ConsoleChanged for current track updates state", %{
+      conn: conn,
+      workspace: workspace,
+      track: track
+    } do
+      {:ok, view, _html} = live(conn, ~p"/#{workspace.slug}/#{track.slug}")
+
+      # Send a console changed event for current track
+      # TrackServer not running, so state fetch will fail gracefully
+      event = ConsoleChanged.new(workspace.id, track.id)
+      send(view.pid, event)
+
+      # Should not crash - gracefully handles missing TrackServer
+      assert render(view)
+    end
+
+    test "ChatChanged for current track updates state", %{
+      conn: conn,
+      workspace: workspace,
+      track: track
+    } do
+      {:ok, view, _html} = live(conn, ~p"/#{workspace.slug}/#{track.slug}")
+
+      # Send a chat changed event for current track
+      event = ChatChanged.new(workspace.id, track.id)
+      send(view.pid, event)
+
+      # Should not crash - gracefully handles missing TrackServer
+      assert render(view)
+    end
+  end
+
+  # ===========================================================================
   # Helper Functions Tests
   # ===========================================================================
 

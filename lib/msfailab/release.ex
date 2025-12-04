@@ -14,6 +14,8 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+# coveralls-ignore-start
+# Reason: Production release tooling, thin wrapper around Ecto.Migrator
 defmodule Msfailab.Release do
   @moduledoc """
   Used for executing DB release tasks when run in production without Mix
@@ -75,3 +77,5 @@ defmodule Msfailab.Release do
     Application.ensure_loaded(@app)
   end
 end
+
+# coveralls-ignore-stop

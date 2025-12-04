@@ -1,3 +1,5 @@
+# coveralls-ignore-start
+# Reason: Pure OTP application supervision setup, no business logic
 defmodule Msfailab.Application do
   # See https://hexdocs.pm/elixir/Application.html
   # for more information on OTP Applications
@@ -83,3 +85,5 @@ defmodule Msfailab.Application do
     end
   end
 end
+
+# coveralls-ignore-stop

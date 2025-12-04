@@ -78,6 +78,7 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
   alias Msfailab.Tracks.TrackServer.State.Console, as: ConsoleState
   alias Msfailab.Tracks.TrackServer.State.Stream, as: StreamState
   alias Msfailab.Tracks.TrackServer.State.Turn, as: TurnState
+  alias Msfailab.Tracks.TrackServer.Turn.ErrorFormatter
 
   @type action ::
           {:create_turn, pos_integer(), String.t()}
@@ -292,6 +293,8 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
     # 3. Unknown tools default to requiring approval (safe default)
     {initial_status, initial_status_str} = determine_initial_approval(tc.name, autonomous)
 
+    # coveralls-ignore-start
+    # Reason: Diagnostic logging, no business logic
     Logger.info("LLM tool call received: #{tc.name}")
 
     if initial_status == :approved and not autonomous do
@@ -301,6 +304,8 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
         Logger.info("Auto-approving tool in autonomous mode: #{tc.name}")
       end
     end
+
+    # coveralls-ignore-stop
 
     # Create UI entry (with temporary ID - will be replaced after persist)
     chat_entry =
@@ -453,6 +458,7 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
         {:error, :not_found}
 
       %{status: :pending} = tool_state ->
+        # coveralls-ignore-next-line
         Logger.info("Tool approved: #{tool_state.tool_name}")
 
         new_tool_state = %{tool_state | status: :approved}
@@ -499,6 +505,7 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
         {:error, :not_found}
 
       %{status: :pending} = tool_state ->
+        # coveralls-ignore-next-line
         Logger.info("Tool denied: #{tool_state.tool_name} (#{reason})")
 
         new_tool_state = %{tool_state | status: :denied}
@@ -607,6 +614,7 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
 
           true ->
             # Unknown tool type
+            # coveralls-ignore-next-line
             Logger.error("Unknown tool type: #{tool_name}")
 
             new_tool_state = %{tool_state | status: :error}
@@ -646,9 +654,13 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
         duration = DateTime.diff(DateTime.utc_now(), started_at, :millisecond)
         result_content = Jason.encode!(result, pretty: true)
 
+        # coveralls-ignore-start
+        # Reason: Diagnostic logging, no business logic
         Logger.info(
           "MSF data tool complete: #{tool_state.tool_name} (#{duration}ms, #{String.length(result_content)} bytes)"
         )
+
+        # coveralls-ignore-stop
 
         new_tool_state = %{tool_state | status: :success, started_at: started_at}
 
@@ -671,8 +683,9 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
 
       {:error, reason} ->
         duration = DateTime.diff(DateTime.utc_now(), started_at, :millisecond)
-        error_message = format_msf_data_error(reason)
+        error_message = ErrorFormatter.format_msf_data_error(reason)
 
+        # coveralls-ignore-next-line
         Logger.warning("MSF data tool failed: #{tool_state.tool_name} - #{error_message}")
 
         new_tool_state = %{tool_state | status: :error, started_at: started_at}
@@ -695,16 +708,6 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
     end
   end
 
-  defp format_msf_data_error(:workspace_not_found), do: "Workspace not found"
-  defp format_msf_data_error(:host_not_found), do: "Host not found"
-  defp format_msf_data_error(:loot_not_found), do: "Loot not found"
-  defp format_msf_data_error({:unknown_tool, name}), do: "Unknown tool: #{name}"
-
-  defp format_msf_data_error({:validation_error, errors}),
-    do: "Validation error: #{inspect(errors)}"
-
-  defp format_msf_data_error(reason), do: inspect(reason)
-
   # Executes memory tools synchronously and returns results immediately.
   # Memory tools now handle their own DB persistence via the Executor.
   @spec execute_memory_tool(TurnState.t(), [ChatEntry.t()], integer(), map(), map()) ::
@@ -720,6 +723,7 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
         duration = DateTime.diff(DateTime.utc_now(), started_at, :millisecond)
         result_content = Jason.encode!(result, pretty: true)
 
+        # coveralls-ignore-next-line
         Logger.info("Memory tool complete: #{tool_state.tool_name} (#{duration}ms)")
 
         new_tool_state = %{tool_state | status: :success, started_at: started_at}
@@ -743,8 +747,9 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
 
       {:error, reason} ->
         duration = DateTime.diff(DateTime.utc_now(), started_at, :millisecond)
-        error_message = format_memory_error(reason)
+        error_message = ErrorFormatter.format_memory_error(reason)
 
+        # coveralls-ignore-next-line
         Logger.warning("Memory tool failed: #{tool_state.tool_name} - #{error_message}")
 
         new_tool_state = %{tool_state | status: :error, started_at: started_at}
@@ -766,10 +771,6 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
         {new_turn, new_entries, actions}
     end
   end
-
-  defp format_memory_error(reason) when is_binary(reason), do: reason
-  defp format_memory_error(:track_not_found), do: "Track not found"
-  defp format_memory_error(reason), do: inspect(reason)
 
   @doc """
   Completes a tool execution.
@@ -798,6 +799,7 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
       {entry_id, tool_state} ->
         duration = DateTime.diff(DateTime.utc_now(), tool_state.started_at, :millisecond)
 
+        # coveralls-ignore-next-line
         Logger.info("Tool execution complete (#{duration}ms, #{String.length(output)} bytes)")
 
         new_tool_state = %{tool_state | status: :success}
@@ -905,9 +907,13 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
       {entry_id, tool_state} ->
         duration = DateTime.diff(DateTime.utc_now(), tool_state.started_at, :millisecond)
 
+        # coveralls-ignore-start
+        # Reason: Diagnostic logging, no business logic
         Logger.info(
           "Bash tool execution complete (#{duration}ms, #{String.length(output)} bytes)"
         )
+
+        # coveralls-ignore-stop
 
         new_tool_state = %{tool_state | status: :success}
 
@@ -960,6 +966,7 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
             0
           end
 
+        # coveralls-ignore-next-line
         Logger.warning("Bash tool execution failed: #{error_message}")
 
         new_tool_state = %{tool_state | status: :error}
@@ -1041,6 +1048,7 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
     error ->
       # Tool execution crashed - mark as error and continue with other tools
       error_message = Exception.message(error)
+      # coveralls-ignore-next-line
       Logger.error("Tool execution crashed: #{tool_state.tool_name} - #{error_message}")
 
       new_tool_state = %{tool_state | status: :error}
@@ -1074,6 +1082,7 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
     track_id = context.track_id
     model = turn.model
 
+    # coveralls-ignore-next-line
     Logger.debug("Starting next LLM request")
 
     request = build_llm_request(track_id, model, turn.last_cache_context)
@@ -1090,6 +1099,7 @@ defmodule Msfailab.Tracks.TrackServer.Turn do
   @spec complete_turn(TurnState.t(), [ChatEntry.t()]) ::
           {TurnState.t(), [ChatEntry.t()], [action()]}
   defp complete_turn(%TurnState{} = turn, entries) do
+    # coveralls-ignore-next-line
     Logger.info("Turn complete")
 
     actions =

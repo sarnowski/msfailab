@@ -37,7 +37,9 @@ defmodule MsfailabWeb.WorkspaceLive do
   alias Msfailab.Tracks.Memory
   alias Msfailab.Tracks.Track
   alias Msfailab.Workspaces
+  alias MsfailabWeb.WorkspaceLive.CommandHandler
   alias MsfailabWeb.WorkspaceLive.Helpers
+  alias MsfailabWeb.WorkspaceLive.ModelSelector
 
   @impl true
   def mount(_params, _session, socket) do
@@ -656,32 +658,13 @@ defmodule MsfailabWeb.WorkspaceLive do
     if track do
       case Containers.send_metasploit_command(track.container_id, track.id, command) do
         {:ok, _command_id} ->
-          socket
-          |> assign(:input_text, "")
+          assign(socket, :input_text, "")
 
-        {:error, :container_not_running} ->
-          socket
-          |> put_flash(:error, "Container is not running")
-
-        {:error, :console_starting} ->
-          socket
-          |> put_flash(:error, "Console is still starting up, please wait")
-
-        {:error, :console_busy} ->
-          socket
-          |> put_flash(:error, "Console is busy processing a command")
-
-        {:error, :console_offline} ->
-          socket
-          |> put_flash(:error, "Console is offline")
-
-        {:error, :console_not_registered} ->
-          socket
-          |> put_flash(:error, "Console is not registered for this track")
+        {:error, reason} ->
+          put_flash(socket, :error, CommandHandler.format_msf_error(reason))
       end
     else
-      socket
-      |> put_flash(:error, "No track selected")
+      put_flash(socket, :error, CommandHandler.no_track_error())
     end
   end
 
@@ -692,7 +675,7 @@ defmodule MsfailabWeb.WorkspaceLive do
     if track do
       do_start_chat_turn(socket, track.id, prompt, model)
     else
-      put_flash(socket, :error, "No track selected")
+      put_flash(socket, :error, CommandHandler.no_track_error())
     end
   end
 
@@ -705,11 +688,8 @@ defmodule MsfailabWeb.WorkspaceLive do
       {:ok, _turn_id} ->
         assign(socket, :input_text, "")
 
-      {:error, :not_found} ->
-        put_flash(socket, :error, "Track server not found")
-
       {:error, reason} ->
-        put_flash(socket, :error, "Failed to send message: #{inspect(reason)}")
+        put_flash(socket, :error, CommandHandler.format_chat_error(reason))
     end
   end
 
@@ -802,18 +782,7 @@ defmodule MsfailabWeb.WorkspaceLive do
   defp maybe_assign_selected_model(socket, nil), do: socket
 
   defp maybe_assign_selected_model(socket, track) do
-    selected_model =
-      case track.current_model do
-        nil ->
-          case List.first(socket.assigns.available_models) do
-            nil -> nil
-            model -> model.name
-          end
-
-        model ->
-          model
-      end
-
+    selected_model = ModelSelector.select_model_for_track(track, socket.assigns.available_models)
     assign(socket, :selected_model, selected_model)
   end
 

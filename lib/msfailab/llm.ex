@@ -434,6 +434,7 @@ defmodule Msfailab.LLM do
   def list_models do
     Registry.list_models()
   catch
+    # coveralls-ignore-next-line
     :exit, _ -> []
   end
 
@@ -468,6 +469,7 @@ defmodule Msfailab.LLM do
   def get_default_model do
     Registry.get_default_model()
   catch
+    # coveralls-ignore-next-line
     :exit, _ -> nil
   end
 
