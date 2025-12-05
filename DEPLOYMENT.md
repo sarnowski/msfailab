@@ -2,37 +2,34 @@
 
 This guide helps system administrators choose and configure the right msfailab deployment for their environment.
 
-## Quick Recommendation
+## Quick Start
 
-For production security research, deploy **Linux Release** on a **dedicated host**:
+For production security research, deploy on a **dedicated Linux host**:
 
 ```bash
-# Download configuration template
-curl -o msfailab.conf https://raw.githubusercontent.com/sarnowski/msfailab/main/msfailab.conf.example
+# Clone and configure
+git clone https://github.com/sarnowski/msfailab.git && cd msfailab
+cp .env.example .env
+nano .env  # Configure at least one AI backend
 
-# Configure at least one AI backend
-nano msfailab.conf
-
-# Start msfailab (runs in background)
-set -a && source msfailab.conf && set +a
-docker compose -f oci://ghcr.io/sarnowski/msfailab-linux:latest up -d
+# Start msfailab
+docker compose -f compose.linux.prod.yaml up --build -d
 
 # Stop msfailab
-docker compose -f oci://ghcr.io/sarnowski/msfailab-linux:latest down
+docker compose -f compose.linux.prod.yaml down
 ```
 
 Read on to understand all deployment options and their trade-offs.
 
 ## Deployment Matrix
 
-msfailab offers six deployment configurations across two dimensions:
+msfailab offers four deployment configurations across two dimensions:
 
-### Dimension 1: Image Source
+### Dimension 1: Deployment Type
 
 | Type | Description | Use Case |
 |------|-------------|----------|
-| **Release** | Pre-built images from GitHub Container Registry | Production, quick setup |
-| **Local** | Build images from source code | Test modifications, contribute |
+| **Prod** | Build images from source, run containerized | Production, testing |
 | **Dev** | App runs on host, only postgres in container | Active development |
 
 ### Dimension 2: Operating System / Network Mode
@@ -47,101 +44,63 @@ msfailab offers six deployment configurations across two dimensions:
 
 | File | OS | Type | Description |
 |------|-----|------|-------------|
-| `compose.linux.release.yaml` | Linux/WSL | Release | **Recommended for production** |
-| `compose.linux.local.yaml` | Linux/WSL | Local | Production setup, built from source |
+| `compose.linux.prod.yaml` | Linux/WSL | Prod | **Recommended for production** |
 | `compose.linux.dev.yaml` | Linux/WSL | Dev | Development with app on host |
-| `compose.macos.release.yaml` | macOS | Release | Pre-built images for macOS |
-| `compose.macos.local.yaml` | macOS | Local | Build from source on macOS |
+| `compose.macos.prod.yaml` | macOS | Prod | Production on macOS |
 | `compose.macos.dev.yaml` | macOS | Dev | Development on macOS |
 
 ## Choosing a Deployment
 
 ### Production Deployments
 
-#### Linux Release (Recommended)
+#### Linux (Recommended)
 
 **Best for**: Security research teams, production pentesting engagements
 
 ```bash
+git clone https://github.com/sarnowski/msfailab.git && cd msfailab
+cp .env.example .env
+# Edit .env with your configuration
+
 # Start
-docker compose -f oci://ghcr.io/sarnowski/msfailab-linux:latest up -d
+docker compose -f compose.linux.prod.yaml up --build -d
 
 # Stop
-docker compose -f oci://ghcr.io/sarnowski/msfailab-linux:latest down
+docker compose -f compose.linux.prod.yaml down
 ```
 
 **Advantages:**
 - Full network functionality (reverse shells, LAN binding)
-- Pre-built images - no build tools required
 - Tested, versioned releases
-- Simplest setup
+- Simple setup
 
 **Requirements:**
 - Linux host (dedicated machine, VM, Raspberry Pi, cloud instance)
 - Docker installed
 
-#### Linux Local
-
-**Best for**: Testing modifications before contributing, running unreleased features
-
-```bash
-git clone https://github.com/sarnowski/msfailab.git
-cd msfailab
-
-# Start
-docker compose -f compose.linux.local.yaml up --build -d
-
-# Stop
-docker compose -f compose.linux.local.yaml down
-```
-
-**Advantages:**
-- Full network functionality
-- Run modified or bleeding-edge code
-- Test changes in production-like environment
-
-**Disadvantages:**
-- Requires source checkout
-- Requires build tools (longer initial startup)
-- May contain unstable code
-
-#### macOS Release
+#### macOS
 
 **Best for**: Individual researchers on Mac who don't need reverse shells
 
 ```bash
+git clone https://github.com/sarnowski/msfailab.git && cd msfailab
+cp .env.example .env
+# Edit .env with your configuration
+
 # Start
-docker compose -f oci://ghcr.io/sarnowski/msfailab-macos:latest up -d
+docker compose -f compose.macos.prod.yaml up --build -d
 
 # Stop
-docker compose -f oci://ghcr.io/sarnowski/msfailab-macos:latest down
+docker compose -f compose.macos.prod.yaml down
 ```
 
 **Advantages:**
 - Works on macOS without Linux VM
-- Pre-built images
 
 **Limitations:**
 - No inbound connections (reverse shells don't work)
 - Web UI only accessible via localhost, not from LAN
 - Bridge networking adds complexity
-
-#### macOS Local
-
-**Best for**: macOS users who need to modify code
-
-```bash
-git clone https://github.com/sarnowski/msfailab.git
-cd msfailab
-
-# Start
-docker compose -f compose.macos.local.yaml up --build -d
-
-# Stop
-docker compose -f compose.macos.local.yaml down
-```
-
-Same limitations as macOS Release, plus requires build tools.
 
 ### Development Deployments
 
@@ -260,12 +219,12 @@ Containers run in an isolated Docker network. Port publishing forwards specific 
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              macOS HOST                                     │
 │                                                                             │
-│   localhost:4000 ─────────────────────────────────┐                         │
-│   localhost:5432 ──────────────────────┐          │                         │
-│                                        │          │                         │
-│   ┌────────────────────────────────────┼──────────┼─────────────────────┐   │
-│   │           Docker Desktop VM        │          │                     │   │
-│   │                                    ▼          ▼                     │   │
+│   localhost:4000 ─────────────────────────────────────┐                     │
+│   localhost:5432 ──────────────────────┐              │                     │
+│                                        │              │                     │
+│   ┌────────────────────────────────────┼──────────────┼─────────────────┐   │
+│   │           Docker Desktop VM        │              │                 │   │
+│   │                                    ▼              ▼                 │   │
 │   │   ┌─────────────────────────────────────────────────────────────┐   │   │
 │   │   │              Bridge Network                                 │   │   │
 │   │   │                                                             │   │   │
@@ -360,7 +319,15 @@ ufw enable
 
 ### Environment Variables
 
-All deployments use environment variables for configuration. Create a `msfailab.conf` file:
+All deployments use environment variables for configuration. Copy `.env.example` to `.env`:
+
+```bash
+cp .env.example .env
+```
+
+Docker Compose automatically loads `.env` from the project directory.
+
+Example configuration:
 
 ```bash
 # AI Backend (at least one required)
@@ -378,13 +345,7 @@ MSFAILAB_PORT=127.0.0.1:4000
 MSFAILAB_SECRET_KEY_BASE=<generate with: openssl rand -base64 48>
 ```
 
-Load before running:
-```bash
-set -a && source msfailab.conf && set +a
-docker compose -f <compose-file> up -d
-```
-
-See `msfailab.conf.example` for all available options.
+See `.env.example` for all available options.
 
 ### Model Filtering
 
@@ -413,7 +374,7 @@ provider=anthropic [warning] Provider returned no models
 ```
 
 Check:
-1. **API keys are set** in environment before running docker compose
+1. **API keys are set** in `.env` before running docker compose
 2. **Network connectivity** from container to API endpoints
 3. **Model filters** aren't excluding all models (see Model Filtering above)
 
@@ -442,22 +403,19 @@ Check:
 
 ## Upgrading
 
-### Release Deployments
-
-Pull latest images and restart:
-
-```bash
-docker compose -f <compose-file> pull
-docker compose -f <compose-file> up -d
-```
-
-### Local Deployments
-
 Pull latest code and rebuild:
 
 ```bash
 git pull
 docker compose -f <compose-file> up --build -d
+```
+
+For a complete image rebuild (after Dockerfile changes or dependency issues):
+
+```bash
+git pull
+docker compose -f <compose-file> build --no-cache
+docker compose -f <compose-file> up -d
 ```
 
 ### Database Migrations

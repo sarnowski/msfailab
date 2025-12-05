@@ -1,56 +1,56 @@
-# Linux Release: Pre-built images with host network mode
-# Usage: docker compose -f compose.linux.release.yaml up -d
+# macOS Production: Build from source with bridge network mode
 #
-# Or via OCI artifact (recommended):
-#   docker compose -f oci://ghcr.io/sarnowski/msfailab/compose.linux.release:latest up -d
+# Usage:
+#   docker compose -f compose.macos.prod.yaml up --build -d
 #
-# Configuration: Set environment variables before running (see msfailab.conf.example).
-# At minimum, configure one AI backend (MSFAILAB_OLLAMA_HOST, MSFAILAB_OPENAI_API_KEY,
-# or MSFAILAB_ANTHROPIC_API_KEY).
+# Limitations:
+#   - No inbound connections from LAN (reverse shells don't work)
+#   - Web UI only accessible via localhost, not from LAN
 #
-# SECURITY: For non-demo deployments, generate a secret key:
-#   openssl rand -base64 48
-# Then set MSFAILAB_SECRET_KEY_BASE in your environment.
+# Configuration: Copy .env.example to .env and configure at minimum one AI backend.
+# See DEPLOYMENT.md for full details.
 
 services:
   postgres:
     image: postgres:17
     container_name: msfailab-postgres
-    network_mode: host
-    # Bind to localhost only - not exposed to network
-    command: postgres -c listen_addresses=localhost
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: msfailab
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - msfailab
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -h localhost"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   msfconsole-image:
-    image: ghcr.io/sarnowski/msfailab-msfconsole:latest
+    build: ./msfconsole
+    image: msfailab-msfconsole
     command: ["true"]
-    network_mode: host
+    networks:
+      - msfailab
 
   migrate:
-    image: ghcr.io/sarnowski/msfailab-server:latest
-    network_mode: host
+    build: .
+    image: msfailab-server
     command: /app/bin/migrate
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: ecto://postgres:postgres@localhost/msfailab
+      DATABASE_URL: ecto://postgres:postgres@msfailab-postgres/msfailab
       # SECURITY: Change for non-demo deployments! Generate with: openssl rand -base64 48
       MSFAILAB_SECRET_KEY_BASE: ${MSFAILAB_SECRET_KEY_BASE:-insecure-demo-secret-change-me-in-production-generate-with-openssl}
+    networks:
+      - msfailab
 
   server:
-    image: ghcr.io/sarnowski/msfailab-server:latest
-    network_mode: host
+    image: msfailab-server
     depends_on:
       postgres:
         condition: service_healthy
@@ -58,21 +58,22 @@ services:
         condition: service_completed_successfully
       msfconsole-image:
         condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:4000:4000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      DATABASE_URL: ecto://postgres:postgres@localhost/msfailab
+      DATABASE_URL: ecto://postgres:postgres@msfailab-postgres/msfailab
       # SECURITY: Change for non-demo deployments! Generate with: openssl rand -base64 48
       MSFAILAB_SECRET_KEY_BASE: ${MSFAILAB_SECRET_KEY_BASE:-insecure-demo-secret-change-me-in-production-generate-with-openssl}
-      # Web UI binding (default: localhost only)
-      MSFAILAB_PORT: ${MSFAILAB_PORT:-4000}
+      # Public hostname for URL generation
       MSFAILAB_HOST: ${MSFAILAB_HOST:-localhost}
       # Docker configuration
       MSFAILAB_DOCKER_ENDPOINT: /var/run/docker.sock
-      MSFAILAB_DOCKER_NETWORK: host
-      MSFAILAB_DEFAULT_CONSOLE_IMAGE: ${MSFAILAB_DEFAULT_CONSOLE_IMAGE:-ghcr.io/sarnowski/msfailab-msfconsole:latest}
-      # Database URL for MSF containers (on host network, use localhost)
-      MSF_DB_URL: postgres://postgres:postgres@localhost:5432/msfailab
+      MSFAILAB_DOCKER_NETWORK: msfailab
+      MSFAILAB_DEFAULT_CONSOLE_IMAGE: ${MSFAILAB_DEFAULT_CONSOLE_IMAGE:-msfailab-msfconsole}
+      # Database URL for MSF containers (from container network perspective)
+      MSF_DB_URL: postgres://postgres:postgres@msfailab-postgres:5432/msfailab
       # AI backend configuration (at least one required)
       MSFAILAB_OLLAMA_HOST: ${MSFAILAB_OLLAMA_HOST:-}
       MSFAILAB_OLLAMA_MODEL_FILTER: ${MSFAILAB_OLLAMA_MODEL_FILTER:-}
@@ -84,6 +85,12 @@ services:
       MSFAILAB_DEFAULT_MODEL: ${MSFAILAB_DEFAULT_MODEL:-}
       # Logging configuration
       MSFAILAB_LOG_LEVEL: ${MSFAILAB_LOG_LEVEL:-}
+    networks:
+      - msfailab
 
 volumes:
   postgres_data:
+
+networks:
+  msfailab:
+    name: msfailab

@@ -37,42 +37,43 @@ msfailab requires Docker and at least one AI backend configured. See [DEPLOYMENT
 ### Linux (Recommended)
 
 ```bash
-# Create configuration file (at least one AI backend required)
-cat > msfailab.conf << 'EOF'
-MSFAILAB_OLLAMA_HOST=http://localhost:11434
-# MSFAILAB_OPENAI_API_KEY=sk-...
-# MSFAILAB_ANTHROPIC_API_KEY=sk-ant-...
-EOF
+# Clone and configure
+git clone https://github.com/sarnowski/msfailab.git && cd msfailab
+cp .env.example .env
+# Edit .env - configure at least one AI backend
 
-# Load configuration and start msfailab
-set -a && source msfailab.conf && set +a
-docker compose -f oci://ghcr.io/sarnowski/msfailab-linux:latest up -d
-```
-
-To update to the latest version, add `--pull always`:
-
-```bash
-docker compose -f oci://ghcr.io/sarnowski/msfailab-linux:latest up -d --pull always
+# Start msfailab
+docker compose -f compose.linux.prod.yaml up --build -d
 ```
 
 Open http://localhost:4000 in your browser.
 
-For a full configuration template with all options, download [msfailab.conf.example](https://github.com/sarnowski/msfailab/blob/main/msfailab.conf.example).
+To update to the latest version:
+
+```bash
+git pull
+docker compose -f compose.linux.prod.yaml up --build -d
+```
 
 ### macOS
 
 macOS users should use the macOS-specific compose file due to Docker Desktop networking limitations:
 
 ```bash
-# Load configuration and start msfailab
-set -a && source msfailab.conf && set +a
-docker compose -f oci://ghcr.io/sarnowski/msfailab-macos:latest up -d
+# Clone and configure
+git clone https://github.com/sarnowski/msfailab.git && cd msfailab
+cp .env.example .env
+# Edit .env - configure at least one AI backend
+
+# Start msfailab
+docker compose -f compose.macos.prod.yaml up --build -d
 ```
 
-To update to the latest version, add `--pull always`:
+To update to the latest version:
 
 ```bash
-docker compose -f oci://ghcr.io/sarnowski/msfailab-macos:latest up -d --pull always
+git pull
+docker compose -f compose.macos.prod.yaml up --build -d
 ```
 
 **Note:** Reverse shells don't work on macOS due to Docker Desktop limitations. See [DEPLOYMENT.md](DEPLOYMENT.md) for details.
@@ -99,7 +100,7 @@ Open http://localhost:4000 in your browser.
 
 ## Configuration
 
-All configuration is done via environment variables. See [msfailab.conf.example](msfailab.conf.example) for a complete template with all options documented.
+All configuration is done via environment variables. See [.env.example](.env.example) for a complete template with all options documented.
 
 ### AI Backends (at least one required)
 
