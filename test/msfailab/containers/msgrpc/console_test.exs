@@ -501,8 +501,8 @@ defmodule Msfailab.Containers.Msgrpc.ConsoleTest do
         {:ok, %{"id" => @console_id}}
       end)
 
-      # Keep console busy in starting state
-      expect(MsgrpcClientMock, :console_read, fn _, _, _ ->
+      # Keep console busy in starting state - use stub since we don't care about call count
+      stub(MsgrpcClientMock, :console_read, fn _, _, _ ->
         {:ok, %{"data" => "Loading...", "busy" => true, "prompt" => ""}}
       end)
 

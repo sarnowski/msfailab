@@ -15,9 +15,11 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 defmodule Msfailab.SkillsTest do
-  use ExUnit.Case, async: true
+  # Not async because Skills module functions use hardcoded default registry name
+  use ExUnit.Case, async: false
 
   alias Msfailab.Skills
+  alias Msfailab.Skills.Registry
   alias Msfailab.Skills.Skill
 
   describe "Skill struct" do
@@ -152,7 +154,7 @@ defmodule Msfailab.SkillsTest do
         %Skill{name: "skill2", description: "Desc 2", filename: "skill2.md", body: "Body 2"}
       ]
 
-      start_supervised!({Msfailab.Skills.Registry, skills: skills})
+      start_supervised!({Registry, skills: skills})
 
       result = Skills.list_skills()
 
@@ -162,7 +164,7 @@ defmodule Msfailab.SkillsTest do
     end
 
     test "returns empty list when no skills registered" do
-      start_supervised!({Msfailab.Skills.Registry, skills: []})
+      start_supervised!({Registry, skills: []})
 
       assert Skills.list_skills() == []
     end
@@ -171,7 +173,7 @@ defmodule Msfailab.SkillsTest do
   describe "get_skill/1" do
     test "returns {:ok, skill} when skill name exists" do
       skill = %Skill{name: "test_skill", description: "Test", filename: "test.md", body: "Body"}
-      start_supervised!({Msfailab.Skills.Registry, skills: [skill]})
+      start_supervised!({Registry, skills: [skill]})
 
       assert {:ok, found} = Skills.get_skill("test_skill")
       assert found.name == "test_skill"
@@ -179,7 +181,7 @@ defmodule Msfailab.SkillsTest do
     end
 
     test "returns {:error, :not_found} when skill name doesn't exist" do
-      start_supervised!({Msfailab.Skills.Registry, skills: []})
+      start_supervised!({Registry, skills: []})
 
       assert {:error, :not_found} = Skills.get_skill("nonexistent")
     end
@@ -192,7 +194,7 @@ defmodule Msfailab.SkillsTest do
         %Skill{name: "skill2", description: "Second skill", filename: "skill2.md", body: "Body 2"}
       ]
 
-      start_supervised!({Msfailab.Skills.Registry, skills: skills})
+      start_supervised!({Registry, skills: skills})
 
       overview = Skills.generate_overview()
 
@@ -202,7 +204,7 @@ defmodule Msfailab.SkillsTest do
     end
 
     test "returns empty message when no skills" do
-      start_supervised!({Msfailab.Skills.Registry, skills: []})
+      start_supervised!({Registry, skills: []})
 
       overview = Skills.generate_overview()
 

@@ -15,7 +15,8 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 defmodule Msfailab.Tracks.TrackServer.ActionTest do
-  use Msfailab.DataCase, async: true
+  # Not async because Skills.Registry uses a global name
+  use Msfailab.DataCase, async: false
 
   import ExUnit.CaptureLog
 
@@ -31,6 +32,13 @@ defmodule Msfailab.Tracks.TrackServer.ActionTest do
   alias Msfailab.Tracks.TrackServer.State.Console, as: ConsoleState
   alias Msfailab.Tracks.TrackServer.State.Stream, as: StreamState
   alias Msfailab.Tracks.TrackServer.State.Turn, as: TurnState
+
+  # Start Skills.Registry once per test to avoid conflicts when
+  # multiple describe blocks run in parallel (async: true)
+  setup do
+    start_supervised!({Msfailab.Skills.Registry, skills: []})
+    :ok
+  end
 
   # ===========================================================================
   # Test Helpers
@@ -372,7 +380,6 @@ defmodule Msfailab.Tracks.TrackServer.ActionTest do
 
   describe "execute/2 - {:start_llm, params} with lazy params" do
     setup do
-      start_supervised!({Msfailab.Skills.Registry, skills: []})
       create_workspace_container_and_track()
     end
 

@@ -15,7 +15,8 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 defmodule Msfailab.Tracks.TrackServer.TurnTest do
-  use Msfailab.DataCase, async: true
+  # Not async because Skills.Registry uses a global name
+  use Msfailab.DataCase, async: false
 
   alias Msfailab.LLM.Events, as: LLMEvents
   alias Msfailab.Tracks.ChatEntry
@@ -23,6 +24,13 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
   alias Msfailab.Tracks.TrackServer.State.Stream, as: StreamState
   alias Msfailab.Tracks.TrackServer.State.Turn, as: TurnState
   alias Msfailab.Tracks.TrackServer.Turn
+
+  # Start Skills.Registry once per test to avoid conflicts when
+  # multiple describe blocks run in parallel (async: true)
+  setup do
+    start_supervised!({Msfailab.Skills.Registry, skills: []})
+    :ok
+  end
 
   # ===========================================================================
   # Test Helpers
@@ -793,11 +801,6 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
   # ===========================================================================
 
   describe "start_turn/5" do
-    setup do
-      start_supervised!({Msfailab.Skills.Registry, skills: []})
-      :ok
-    end
-
     test "creates turn and returns actions" do
       stream = StreamState.new(1)
       entries = []
@@ -862,11 +865,6 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
   # ===========================================================================
 
   describe "reconcile/4 - LLM continuation" do
-    setup do
-      start_supervised!({Msfailab.Skills.Registry, skills: []})
-      :ok
-    end
-
     test "starts next LLM request when all tools are terminal" do
       tool_inv = make_tool_invocation("call_1", "execute_msfconsole_command", :success)
 
@@ -1342,10 +1340,7 @@ defmodule Msfailab.Tracks.TrackServer.TurnTest do
       console = make_console()
       context = %{track_id: 1, model: "gpt-4", autonomous: false}
 
-      # With Skills.Registry started, this should trigger LLM continuation
-      # because all tools are terminal (cancelled + success)
-      start_supervised!({Msfailab.Skills.Registry, skills: []})
-
+      # All tools are terminal (cancelled + success), so this triggers LLM continuation
       {new_turn, _entries, actions} = Turn.reconcile(turn, console, [], context)
 
       # Should transition to start next LLM request since all tools are terminal
